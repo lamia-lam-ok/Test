@@ -159,7 +159,7 @@ def format_result(number, unitech_data, truecaller_data):
         result.append("❌ **Error:** Failed to fetch data")
     
     # ============ SOCIAL ACCOUNT HEADER ============
-    result.append("\n📋 **SOCIAL ACCOUNT AND NAMES:**")
+   # result.append("\n📋 **SOCIAL ACCOUNT AND NAMES:**")
     # ============================================
     
     result.append("\n" + "=" * 50)
