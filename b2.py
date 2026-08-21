@@ -158,11 +158,9 @@ def format_result(number, unitech_data, truecaller_data):
     else:
         result.append("❌ **Error:** Failed to fetch data")
     
-    # ============ NEW: SOCIAL ACCOUNT AND NAMES ============
+    # ============ SOCIAL ACCOUNT HEADER ============
     result.append("\n📋 **SOCIAL ACCOUNT AND NAMES:**")
-    result.append(f"WhatsApp: https://wa.me/+880{number}")
-    result.append(f"Telegram: https://t.me/+880{number}")
-    # =====================================================
+    # ============================================
     
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -812,7 +810,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             truecaller_data = truecaller_search(user_input)
         result_text = format_result(user_input, unitech_data, truecaller_data)
         await processing_msg.delete()
-        await update.message.reply_text(result_text, parse_mode='Markdown', reply_markup=get_keyboard())
+
+        # Create social buttons
+        social_buttons = [
+            [
+                InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/+880{user_input}"),
+                InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+880{user_input}")
+            ]
+        ]
+
+        # Send everything as one message with buttons
+        await update.message.reply_text(
+            result_text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(social_buttons)
+        )
+
     except Exception as e:
         logger.error(f"Error: {e}")
         await processing_msg.edit_text("❌ **Error:** Something went wrong.")
