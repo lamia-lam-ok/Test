@@ -158,10 +158,6 @@ def format_result(number, unitech_data, truecaller_data):
     else:
         result.append("❌ **Error:** Failed to fetch data")
     
-    # ============ SOCIAL ACCOUNT HEADER ============
-   # result.append("\n📋 **SOCIAL ACCOUNT AND NAMES:**")
-    # ============================================
-    
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     result.append("🤖 **Bot Says:** Enjoy")
@@ -481,6 +477,7 @@ Hi {user.first_name}! Click Search Number button and send your desire number to 
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=get_keyboard())
 
+# ============ UPDATED: verify_joined_callback now sends a fresh message ============
 async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -534,6 +531,7 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
+    # Both joined – show the main menu (same as /start)
     user = update.effective_user
     welcome_text = f"""
 👋 **Welcome to Number Lookup Bot!**
@@ -551,6 +549,7 @@ Hi {user.first_name}! Click Search Number button and send your desire number to 
         parse_mode='Markdown',
         reply_markup=get_keyboard()
     )
+# =============================================================
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await notify_owner(context, update.effective_user, "Help Command")
@@ -811,20 +810,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = format_result(user_input, unitech_data, truecaller_data)
         await processing_msg.delete()
 
-        # Create social buttons
-        social_buttons = [
+        # ============ NEW: Add inline buttons for WhatsApp & Telegram ============
+        social_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/+880{user_input}"),
                 InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+880{user_input}")
             ]
-        ]
-
-        # Send everything as one message with buttons
-        await update.message.reply_text(
-            result_text,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(social_buttons)
-        )
+        ])
+        await update.message.reply_text(result_text, parse_mode='Markdown', reply_markup=social_buttons)
+        # =========================================================================
 
     except Exception as e:
         logger.error(f"Error: {e}")
