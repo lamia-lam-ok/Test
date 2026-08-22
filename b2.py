@@ -42,7 +42,7 @@ REQUIRED_GROUP = "@team_420_bd"
 
 USER_DATA_FILE = "user_data.json"
 FREE_CREDITS_PERIOD = 30
-FREE_CREDITS_AMOUNT = 3
+FREE_CREDITS_AMOUNT = 4
 REFERRAL_REWARD = 2
 
 # ============ OWNER NOTIFICATION ============
@@ -117,6 +117,7 @@ def truecaller_search(number):
         logger.error(f"Truecaller API error: {e}")
         return None
 
+# ============ UPDATED format_result with new "IMAGE AND FACEBOOK ID" section ============
 def format_result(number, unitech_data, truecaller_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
@@ -158,11 +159,34 @@ def format_result(number, unitech_data, truecaller_data):
     else:
         result.append("❌ **Error:** Failed to fetch data")
     
+    # ============ NEW: IMAGE AND FACEBOOK ID ============
+    result.append("\n📋 **IMAGE AND FACEBOOK ID:**")
+    if unitech_data and unitech_data.get('status') == True:
+        data = unitech_data.get('data', {})
+        fb_data = data.get('facebookID', {})
+        fb_id = fb_data.get('id', 'N/A')
+        fb_url = fb_data.get('url', 'N/A')
+        result.append(f"**FB ID:** {fb_id}")
+        result.append(f"**FB Profile Link:** {fb_url}")
+        
+        img_url = data.get('image')
+        if not img_url:
+            images = data.get('images', [])
+            if images:
+                img_url = images[0]
+        if not img_url:
+            img_url = 'N/A'
+        result.append(f"**Image:** {img_url}")
+    else:
+        result.append("❌ **Error:** Failed to fetch data")
+    # ===================================================
+    
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     result.append("🤖 **Bot Says:** Enjoy")
     
     return "\n".join(result)
+# ==========================================================================
 
 # ============ MEMBERSHIP CHECK ============
 async def check_membership(user_id, context):
@@ -282,30 +306,48 @@ def get_credits(user_id):
         return bonus
     return free + bonus
 
+# ============ UPDATED: Deduct 2 credits per search ============
 def deduct_credit(user_id):
     if OWNER_ID and user_id == OWNER_ID:
         return True
+
     user = ensure_monthly_credits(user_id)
     total = get_credits(user_id)
-    if total <= 0:
+
+    # Need at least 2 credits for a search
+    if total < 2:
         return False
+
     free = user.get("credits", 0)
+    need = 2  # credits to deduct
+
+    # Deduct from free credits first
     if free > 0:
-        user["credits"] = free - 1
-        update_user_data(user_id, user)
-        return True
-    else:
+        take = min(free, need)      # take as many as possible (up to 2)
+        user["credits"] = free - take
+        need -= take
+
+    # Deduct remaining from bonus credits
+    if need > 0:
         bonus_list = user.get("bonus_credits", [])
         now = time.time()
-        for idx, item in enumerate(bonus_list):
+        for item in bonus_list:
+            if need <= 0:
+                break
             if item.get("expiry", 0) > now and item.get("amount", 0) > 0:
-                bonus_list[idx]["amount"] -= 1
-                if bonus_list[idx]["amount"] == 0:
-                    del bonus_list[idx]
-                user["bonus_credits"] = bonus_list
-                update_user_data(user_id, user)
-                return True
-        return False
+                take = min(item["amount"], need)
+                item["amount"] -= take
+                need -= take
+
+        # Remove zero‑amount or expired bonus entries
+        user["bonus_credits"] = [
+            item for item in bonus_list
+            if item.get("amount", 0) > 0 and item.get("expiry", 0) > now
+        ]
+
+    update_user_data(user_id, user)
+    return True
+# ============================================================
 
 def days_until_next_free(user_id):
     user = get_user_data(user_id)
