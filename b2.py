@@ -117,7 +117,7 @@ def truecaller_search(number):
         logger.error(f"Truecaller API error: {e}")
         return None
 
-# ============ UPDATED format_result with new "IMAGE AND FACEBOOK ID" section ============
+# ============ UPDATED format_result with IMAGE AND FACEBOOK ID ============
 def format_result(number, unitech_data, truecaller_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
@@ -169,6 +169,7 @@ def format_result(number, unitech_data, truecaller_data):
         result.append(f"**FB ID:** {fb_id}")
         result.append(f"**FB Profile Link:** {fb_url}")
         
+        # Image: try 'image' first, fallback to images[0]
         img_url = data.get('image')
         if not img_url:
             images = data.get('images', [])
@@ -306,7 +307,7 @@ def get_credits(user_id):
         return bonus
     return free + bonus
 
-# ============ UPDATED: Deduct 2 credits per search ============
+# ============ Deduct 2 credits per search ============
 def deduct_credit(user_id):
     if OWNER_ID and user_id == OWNER_ID:
         return True
@@ -314,20 +315,17 @@ def deduct_credit(user_id):
     user = ensure_monthly_credits(user_id)
     total = get_credits(user_id)
 
-    # Need at least 2 credits for a search
     if total < 2:
         return False
 
     free = user.get("credits", 0)
-    need = 2  # credits to deduct
+    need = 2
 
-    # Deduct from free credits first
     if free > 0:
-        take = min(free, need)      # take as many as possible (up to 2)
+        take = min(free, need)
         user["credits"] = free - take
         need -= take
 
-    # Deduct remaining from bonus credits
     if need > 0:
         bonus_list = user.get("bonus_credits", [])
         now = time.time()
@@ -338,8 +336,6 @@ def deduct_credit(user_id):
                 take = min(item["amount"], need)
                 item["amount"] -= take
                 need -= take
-
-        # Remove zero‑amount or expired bonus entries
         user["bonus_credits"] = [
             item for item in bonus_list
             if item.get("amount", 0) > 0 and item.get("expiry", 0) > now
@@ -519,7 +515,6 @@ Hi {user.first_name}! Click Search Number button and send your desire number to 
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=get_keyboard())
 
-# ============ UPDATED: verify_joined_callback now sends a fresh message ============
 async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -573,7 +568,6 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    # Both joined – show the main menu (same as /start)
     user = update.effective_user
     welcome_text = f"""
 👋 **Welcome to Number Lookup Bot!**
@@ -591,7 +585,6 @@ Hi {user.first_name}! Click Search Number button and send your desire number to 
         parse_mode='Markdown',
         reply_markup=get_keyboard()
     )
-# =============================================================
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await notify_owner(context, update.effective_user, "Help Command")
@@ -853,7 +846,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = format_result(user_input, unitech_data, truecaller_data)
         await processing_msg.delete()
 
-        # ============ NEW: Add inline buttons for WhatsApp & Telegram ============
         social_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/+880{user_input}"),
@@ -861,7 +853,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ])
         await update.message.reply_text(result_text, parse_mode='Markdown', reply_markup=social_buttons)
-        # =========================================================================
 
     except Exception as e:
         logger.error(f"Error: {e}")
