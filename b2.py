@@ -85,19 +85,25 @@ def generate_access_token():
 # ============ API FUNCTIONS ============
 def unitech_lookup(number, access_token):
     try:
-        url = f"{UNITECH_URL}?code=880&number={number}"
+        url = "https://lookup.unitechapps.in/"
         headers = {
             "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
             "Host": "lookup.unitechapps.in",
             "Connection": "Keep-Alive",
             "Accept-Encoding": "gzip",
             "User-Agent": "okhttp/4.12.0"
         }
-        response = requests.get(url, headers=headers, timeout=10)
+        payload = {
+            "code": "880",
+            "number": number
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error(f"Unitech API error: {e}")
+        # Still log the error for debugging (owner only)
+        logger.error(f"API error: {e}")
         return None
 
 def truecaller_search(number):
@@ -117,7 +123,7 @@ def truecaller_search(number):
         logger.error(f"Truecaller API error: {e}")
         return None
 
-# ============ UPDATED format_result with IMAGE AND FACEBOOK ID ============
+# ============ format_result - hides all source URLs/names ============
 def format_result(number, unitech_data, truecaller_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
@@ -141,7 +147,7 @@ def format_result(number, unitech_data, truecaller_data):
         else:
             result.append("❌ **Other Names:** Not Found")
     else:
-        result.append("❌ **Error:** Failed to fetch data")
+        result.append("❌ **Information unavailable**")
     
     result.append("\n📋 **COMMON NAMES:**")
     if truecaller_data:
@@ -157,9 +163,9 @@ def format_result(number, unitech_data, truecaller_data):
         if suggestions:
             result.append(f"💡 **Other Suggestions:** {', '.join(suggestions[:5])}")
     else:
-        result.append("❌ **Error:** Failed to fetch data")
+        result.append("❌ **Information unavailable**")
     
-    # ============ NEW: IMAGE AND FACEBOOK ID ============
+    # ============ IMAGE AND FACEBOOK ID (no source URLs visible) ============
     result.append("\n📋 **IMAGE AND FACEBOOK ID:**")
     if unitech_data and unitech_data.get('status') == True:
         data = unitech_data.get('data', {})
@@ -169,25 +175,25 @@ def format_result(number, unitech_data, truecaller_data):
         result.append(f"**FB ID:** {fb_id}")
         result.append(f"**FB Profile Link:** {fb_url}")
         
-        # Image: try 'image' first, fallback to images[0]
+        # Image: check if exists (without showing URL)
         img_url = data.get('image')
         if not img_url:
             images = data.get('images', [])
             if images:
                 img_url = images[0]
-        if not img_url:
-            img_url = 'N/A'
-        result.append(f"**Image:** {img_url}")
+        if img_url:
+            result.append(f"**Image:** ✅ Found")
+        else:
+            result.append(f"**Image:** ❌ Not Found")
     else:
-        result.append("❌ **Error:** Failed to fetch data")
-    # ===================================================
+        result.append("❌ **Information unavailable**")
+    # ======================================================================
     
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     result.append("🤖 **Bot Says:** Enjoy")
     
     return "\n".join(result)
-# ==========================================================================
 
 # ============ MEMBERSHIP CHECK ============
 async def check_membership(user_id, context):
@@ -307,7 +313,6 @@ def get_credits(user_id):
         return bonus
     return free + bonus
 
-# ============ Deduct 2 credits per search ============
 def deduct_credit(user_id):
     if OWNER_ID and user_id == OWNER_ID:
         return True
@@ -343,7 +348,6 @@ def deduct_credit(user_id):
 
     update_user_data(user_id, user)
     return True
-# ============================================================
 
 def days_until_next_free(user_id):
     user = get_user_data(user_id)
@@ -846,13 +850,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = format_result(user_input, unitech_data, truecaller_data)
         await processing_msg.delete()
 
-        social_buttons = InlineKeyboardMarkup([
+        # Extract image URL for the button (if exists)
+        img_url = None
+        if unitech_data and unitech_data.get('status') == True:
+            data = unitech_data.get('data', {})
+            img_url = data.get('image')
+            if not img_url:
+                images = data.get('images', [])
+                if images:
+                    img_url = images[0]
+
+        # Build buttons
+        buttons = [
             [
                 InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/+880{user_input}"),
                 InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+880{user_input}")
             ]
-        ])
-        await update.message.reply_text(result_text, parse_mode='Markdown', reply_markup=social_buttons)
+        ]
+        # Add View Image button if image exists
+        if img_url:
+            buttons.append([InlineKeyboardButton("🖼️ View Image", url=img_url)])
+
+        await update.message.reply_text(
+            result_text,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
     except Exception as e:
         logger.error(f"Error: {e}")
