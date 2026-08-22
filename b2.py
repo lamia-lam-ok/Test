@@ -643,6 +643,7 @@ async def refer_friends(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👥 **Refer Friends**
 
 Share your referral link with friends:
+
 `{referral_link}`
 
 When a friend joins using this link, you get **+{REFERRAL_REWARD} free credits**!
