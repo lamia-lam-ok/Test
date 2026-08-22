@@ -12,6 +12,7 @@ import re
 from datetime import datetime
 import time
 import asyncio
+import tempfile  # <-- added for image temp file
 
 # ============ CONFIGURATION ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -102,8 +103,7 @@ def unitech_lookup(number, access_token):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        # Still log the error for debugging (owner only)
-        logger.error(f"API error: {e}")
+        logger.error(f"Unitech API error: {e}")
         return None
 
 def truecaller_search(number):
@@ -780,6 +780,7 @@ async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=get_keyboard()
     )
 
+# ============ UPDATED handle_message: downloads image, sends as photo, deletes temp ============
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -850,7 +851,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = format_result(user_input, unitech_data, truecaller_data)
         await processing_msg.delete()
 
-        # Extract image URL for the button (if exists)
+        # Extract image URL (if exists)
         img_url = None
         if unitech_data and unitech_data.get('status') == True:
             data = unitech_data.get('data', {})
@@ -860,26 +861,61 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if images:
                     img_url = images[0]
 
-        # Build buttons
+        # Build buttons (WhatsApp + Telegram)
         buttons = [
             [
                 InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/+880{user_input}"),
                 InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+880{user_input}")
             ]
         ]
-        # Add View Image button if image exists
-        if img_url:
-            buttons.append([InlineKeyboardButton("🖼️ View Image", url=img_url)])
 
-        await update.message.reply_text(
-            result_text,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        # If image exists, download and send as photo
+        if img_url:
+            temp_file = None
+            try:
+                # Download image
+                response = requests.get(img_url, timeout=15)
+                if response.status_code == 200:
+                    # Save to temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
+                        tmp.write(response.content)
+                        temp_file = tmp.name
+
+                    # Send photo with caption and buttons
+                    with open(temp_file, 'rb') as photo:
+                        await update.message.reply_photo(
+                            photo=photo,
+                            caption=result_text,
+                            parse_mode='Markdown',
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                    # Delete the file immediately
+                    os.remove(temp_file)
+                    temp_file = None
+                else:
+                    raise Exception("Failed to download image")
+            except Exception as e:
+                logger.error(f"Image download failed: {e}")
+                # Fallback: send text only
+                if temp_file and os.path.exists(temp_file):
+                    os.remove(temp_file)
+                await update.message.reply_text(
+                    result_text,
+                    parse_mode='Markdown',
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+        else:
+            # No image – send text with buttons
+            await update.message.reply_text(
+                result_text,
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
 
     except Exception as e:
         logger.error(f"Error: {e}")
         await processing_msg.edit_text("❌ **Error:** Something went wrong.")
+# ======================================================================================
 
 # ============ ADMIN COMMAND ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
