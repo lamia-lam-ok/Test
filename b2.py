@@ -1,17 +1,20 @@
 import warnings
 warnings.filterwarnings("ignore", category=Warning)
 
+import requests
+import json
+import http.client
 import logging
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import os
 import re
-import urllib.parse
-import tempfile
-import json
 from datetime import datetime
-import pytz
-import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+import time
+import asyncio
+import tempfile
+import secrets
+import random
 
 # ============ CONFIGURATION ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -22,61 +25,6 @@ if not BOT_TOKEN:
 OWNER_ID = os.environ.get("OWNER_ID")
 if OWNER_ID:
     OWNER_ID = int(OWNER_ID)
-else:
-    print("⚠️ OWNER_ID not set. Debug info won't be sent.")
-
-REQUIRED_CHANNEL = "@InfinitelyInteresting"
-REQUIRED_GROUP = "@team_420_bd"
-
-BD_TIMEZONE = pytz.timezone('Asia/Dhaka')
-
-# ============ COOKIES FROM ENVIRONMENT (or defaults) ============
-# You can set FB_COOKIES as a JSON string, e.g.:
-# '{"datr":"...","sb":"...","fr":"...","locale":"en_GB", ...}'
-# Or set each cookie individually with names: FB_DATR, FB_SB, FB_FR, etc.
-def get_cookies():
-    cookies_env = os.environ.get("FB_COOKIES")
-    if cookies_env:
-        try:
-            return json.loads(cookies_env)
-        except:
-            pass
-    
-    # Fallback to individual env vars, or use the hardcoded defaults
-    return {
-        "datr": os.environ.get("FB_DATR", "pQi0aWq7H5A3-agoSlN81uyN"),
-        "locale": os.environ.get("FB_LOCALE", "en_GB"),
-        "sb": os.environ.get("FB_SB", "l-22aZ0eJPr0zLAvZH1AfBBS"),
-        "m_pixel_ratio": os.environ.get("FB_PIXEL_RATIO", "2.8125"),
-        "wd": os.environ.get("FB_WD", "384x832"),
-        "vpd": os.environ.get("FB_VPD", "v1%3B719x384x2.8125"),
-        "ps_l": os.environ.get("FB_PS_L", "1"),
-        "ps_n": os.environ.get("FB_PS_N", "1"),
-        "fr": os.environ.get("FB_FR", "00Jgx7F9kdRNNyeZd..BptC4p..AAA.0.0.BptxL5.AWc6gReBk0taVG9HkpuWk31Nb38"),
-    }
-
-COOKIES = get_cookies()
-
-# ============ HEADERS ============
-HEADERS = {
-    "Host": "www.facebook.com",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Dest": "document",
-    "dpr": "2.8125",
-    "viewport-width": "980",
-    "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    "sec-ch-ua-mobile": "?1",
-    "sec-ch-ua-platform": '"Android"',
-    "sec-ch-ua-platform-version": '"10.0.0"',
-    "sec-ch-ua-model": '"R7-PRIMO"',
-    "sec-ch-ua-full-version-list": '"Google Chrome";v="131.0.6778.260", "Chromium";v="131.0.6778.260", "Not_A Brand";v="24.0.0.0"',
-    "sec-ch-prefers-color-scheme": "dark",
-}
 
 # ============ LOGGING ============
 logging.basicConfig(
@@ -85,112 +33,340 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============ FACEBOOK SCRAPER ============
-def extract_facebook_images(profile_url):
-    # Format URL
-    if 'profile.php?id=' in profile_url:
-        parsed = urllib.parse.urlparse(profile_url)
-        query_params = urllib.parse.parse_qs(parsed.query)
-        if 'id' in query_params:
-            profile_id = query_params['id'][0]
-            base_url = f"https://www.facebook.com/{profile_id}"
-        else:
-            base_url = profile_url.rstrip('/')
-    else:
-        base_url = profile_url.rstrip('/')
+# ============ CONSTANTS ============
+REFRESH_TOKEN = "AMf-vBx2NF07mspl6qH2dBUBNE0DWkwyrjMvqElbwXoq8fA07xd4oaTPho8OWo_wwCmACHqgWn7ZMKYOqiTV4_UX4P5xNT78c_uR-DHa1aqPw1zznx5LgZ03dA3biu9u9IEsvprr6mzDcSAvH7A9-bdIkVG_O2EeV92e2oswF-WniYoKDmRKUGfJ-PNOnWD0Ttg7jGsKk9XLbNQFsLpp4iQ6uGIgZ3OIhA"
+TOKEN_URL = "https://securetoken.googleapis.com/v1/token?key=AIzaSyAtRVK71cLulaRpQCQ3C8YAB-jV5lQ-0kQ"
+UNITECH_URL = "https://lookup.unitechapps.in/"
+TRUECALLER_HOST = "truecaller-data2.p.rapidapi.com"
+TRUECALLER_KEY = "c39837c529msh8fabb88e2647693p12fad5jsnc43e4c82d45e"
 
-    # Primary URL
-    url = f"{base_url}/?hr=1&wtsid=rdr_0StRnXFIDwHXVBBRB"
-    debug_html = ""
+REQUIRED_CHANNEL = "@InfinitelyInteresting"
+REQUIRED_GROUP = "@team_420_bd"
 
+USER_DATA_FILE = "user_data.json"
+FREE_CREDITS_PERIOD = 30
+FREE_CREDITS_AMOUNT = 8
+REFERRAL_REWARD = 2
+
+# ============ OWNER NOTIFICATION ============
+async def notify_owner(context, user, activity, extra=None):
+    if not OWNER_ID:
+        return
+    if user.id == OWNER_ID:
+        return
+    name = user.full_name or "N/A"
+    username = f"@{user.username}" if user.username else "N/A"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg = f"📢 **User Activity**\n\n"
+    msg += f"**Activity:** {activity}\n"
+    msg += f"**Full Name:** {name}\n"
+    msg += f"**Username:** {username}\n"
+    msg += f"**User ID:** `{user.id}`\n"
+    msg += f"**Timestamp:** {timestamp}\n"
+    if extra:
+        msg += f"\n**Extra Info:** {extra}"
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        session.cookies.update(COOKIES)
-
-        # Try primary URL
-        res = session.get(url, timeout=30)
-        debug_html = res.text[:500]
-
-        if res.status_code != 200:
-            logger.warning(f"Primary URL status {res.status_code}, trying fallback.")
-            # Fallback: simply the base URL
-            res = session.get(base_url, timeout=30)
-            debug_html = res.text[:500]
-            if res.status_code != 200:
-                return None, None, debug_html
-
-        html_content = res.text
-
-        # Exactly the same regex as your working script
-        img_pattern = r'https?://[^"\'\s]+\.fbcdn\.net[^"\'\s]+\.(?:jpg|jpeg|png|webp)[^"\'\s]*'
-        all_images = re.findall(img_pattern, html_content, re.IGNORECASE)
-
-        unique_images = []
-        seen = set()
-        for img in all_images:
-            clean_url = img.replace('&amp;', '&')
-            base = clean_url.split('?')[0]
-            if base not in seen:
-                seen.add(base)
-                unique_images.append(clean_url)
-
-        if not unique_images:
-            return None, None, debug_html
-
-        cover_photo = None
-        profile_picture = None
-        for img_url in unique_images:
-            if 'p1080x375' in img_url or 'p851x315' in img_url:
-                cover_photo = img_url
-            elif 'p270x270' in img_url or 'p200x200' in img_url or 'p100x100' in img_url:
-                if not profile_picture:
-                    profile_picture = img_url
-
-        if not cover_photo and len(unique_images) >= 1:
-            cover_photo = unique_images[0]
-        if not profile_picture and len(unique_images) >= 2:
-            profile_picture = unique_images[1]
-
-        return cover_photo, profile_picture, debug_html
-
+        await context.bot.send_message(chat_id=OWNER_ID, text=msg, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Scraper error: {e}")
-        return None, None, debug_html
+        logger.error(f"Failed to notify owner: {e}")
 
-# ============ DOWNLOAD & SEND ============
-async def download_and_send_photo(context, chat_id, img_url, caption):
-    if not img_url:
-        return False
-    temp_file = None
+# ============ TOKEN GENERATION ============
+def generate_access_token():
     try:
-        img_headers = {
-            "User-Agent": HEADERS["User-Agent"],
-            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-            "Referer": "https://www.facebook.com/",
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Dart/3.12 (dart:io)",
         }
-        response = requests.get(img_url, headers=img_headers, cookies=COOKIES, timeout=30)
-        if response.status_code != 200:
-            return False
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
-            tmp.write(response.content)
-            temp_file = tmp.name
-
-        with open(temp_file, 'rb') as photo:
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=photo,
-                caption=caption,
-                parse_mode='Markdown'
-            )
-        os.remove(temp_file)
-        return True
+        data = {"grantType": "refresh_token", "refreshToken": REFRESH_TOKEN}
+        response = requests.post(TOKEN_URL, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+        return response.json().get('access_token')
     except Exception as e:
-        logger.error(f"Image send error: {e}")
-        if temp_file and os.path.exists(temp_file):
-            os.remove(temp_file)
-        return False
+        logger.error(f"Token generation failed: {e}")
+        return None
+
+# ============ API FUNCTIONS ============
+def unitech_lookup(number, access_token):
+    try:
+        url = "https://lookup.unitechapps.in/"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json; charset=UTF-8",
+            "Host": "lookup.unitechapps.in",
+            "Connection": "Keep-Alive",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/4.12.0"
+        }
+        payload = {
+            "code": "880",
+            "number": number
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Unitech API error: {e}")
+        return None
+
+def truecaller_search(number):
+    try:
+        conn = http.client.HTTPSConnection(TRUECALLER_HOST)
+        headers = {
+            "x-rapidapi-key": TRUECALLER_KEY,
+            "x-rapidapi-host": TRUECALLER_HOST
+        }
+        conn.request("GET", f"/search/+880{number}", headers=headers)
+        res = conn.getresponse()
+        if res.status == 200:
+            data = res.read()
+            return json.loads(data.decode("utf-8"))
+        return None
+    except Exception as e:
+        logger.error(f"Truecaller API error: {e}")
+        return None
+
+# ============ LYNXIO API (WhatsApp + Telegram) ============
+DEVICE_MODELS = [
+    "SM-S921B", "SM-S928B", "SM-A556B", "SM-M546B", "SM-G991B",
+    "SM-N986B", "SM-F956B", "SM-F731B", "SM-A356B",
+    "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
+    "iPhone17,1", "iPhone17,2", "iPhone14,5",
+    "Pixel-8-Pro", "Pixel-7-Pro", "Pixel-6", "Pixel-9-Pro",
+    "Pixel-6a", "Pixel-7a", "Pixel-8",
+    "M2011K2G", "M2101K9G", "2211133G", "23013PC75G",
+    "Xiaomi-14-Pro", "Xiaomi-13T", "Xiaomi-12-Pro",
+    "OnePlus-12", "OnePlus-11", "OnePlus-10-Pro",
+    "OnePlus-Nord-CE-3", "OnePlus-9-Pro",
+    "CPH2609", "CPH2451", "Find-X7-Pro", "Find-X5-Pro",
+    "V2230", "V2244", "X90-Pro", "X100-Pro",
+    "RMX3370", "RMX3841", "GT-Neo-5", "Realme-11-Pro",
+    "XT2301-1", "Moto-G84", "Edge-40-Pro", "Edge-50-Ultra",
+    "LYA-L09", "ELE-L29", "NOH-NX9", "P40-Pro",
+    "Nothing-Phone-2", "Nothing-Phone-1",
+    "XQ-DQ72", "Xperia-1-V", "Xperia-5-IV",
+    "LG-V600", "LM-G900",
+]
+
+def generate_device_id():
+    hex_part = secrets.token_hex(8)
+    model = random.choice(DEVICE_MODELS)
+    timestamp = int(time.time() * 1000)
+    return f"{hex_part}-{model}-{timestamp}"
+
+def lynxio_lookup(number):
+    """
+    Check WhatsApp and Telegram presence for a phone number using Lynxio API.
+    Returns dict with:
+      - telegram_name: str or None
+      - whatsapp_images: list of image URLs (no labels)
+      - telegram_images: list of image URLs (no labels)
+    Returns None on failure.
+    """
+    try:
+        phone = f"+880{number}"
+        # Step 1: Guest token
+        device_id = generate_device_id()
+        guest_url = "https://api.lynxio.ovh/auth/guest-token"
+        guest_headers = {
+            "accept": "application/json, text/plain, */*",
+            "x-device-id": device_id,
+            "Content-Type": "application/json",
+            "Host": "api.lynxio.ovh",
+            "Connection": "Keep-Alive",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/4.11.0"
+        }
+        guest_res = requests.post(guest_url, headers=guest_headers, json={}, timeout=10)
+        guest_res.raise_for_status()
+        guest_data = guest_res.json()
+        api_key = guest_data.get("api_key")
+        if not api_key:
+            logger.error("Lynxio: No api_key in guest response")
+            return None
+
+        # Step 2: Search
+        search_url = "https://api.lynxio.ovh/jobs/api/v1/phone/search"
+        search_headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "Host": "api.lynxio.ovh",
+            "Connection": "Keep-Alive",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/4.11.0"
+        }
+        search_payload = {"phone": phone}
+        search_res = requests.post(search_url, headers=search_headers, json=search_payload, timeout=10)
+        search_res.raise_for_status()
+        search_data = search_res.json()
+        job_id = search_data.get("job_id")
+        if not job_id:
+            logger.error("Lynxio: No job_id returned")
+            return None
+
+        # Step 3: Poll status
+        status_url = f"https://api.lynxio.ovh/jobs/api/v1/job/{job_id}/status"
+        status_headers = {
+            "content-type": "application/json",
+            "x-api-key": api_key,
+            "Host": "api.lynxio.ovh",
+            "Connection": "Keep-Alive",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/4.11.0",
+            "If-Modified-Since": time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime())
+        }
+        final_data = None
+        for attempt in range(60):
+            status_res = requests.get(status_url, headers=status_headers, timeout=10)
+            if status_res.status_code != 200:
+                time.sleep(5)
+                continue
+            status_data = status_res.json()
+            current_status = status_data.get("status")
+            if current_status in ("pending", "running"):
+                time.sleep(5)
+                continue
+            final_data = status_data
+            break
+
+        if not final_data or final_data.get("status") != "completed":
+            logger.error("Lynxio: Job did not complete")
+            return None
+
+        result = final_data.get("result", {})
+        services = result.get("services_results", {})
+
+        # --- Parse Telegram ---
+        telegram_name = None
+        telegram_images = []
+        telegram_raw = services.get("telegram", {}).get("telegram_data", {}).get("raw_output", "")
+        # Check if Telegram account exists (if raw_output doesn't contain "No user was found")
+        if "No user was found" not in telegram_raw:
+            # Extract name
+            first_match = re.search(r"The current first name of the user .+? is (.+?)\n", telegram_raw)
+            last_match = re.search(r"The current last name of the user .+? is (.+?)\n", telegram_raw)
+            if first_match and last_match:
+                telegram_name = f"{first_match.group(1).strip()} {last_match.group(1).strip()}"
+            elif first_match:
+                telegram_name = first_match.group(1).strip()
+            elif last_match:
+                telegram_name = last_match.group(1).strip()
+            # Extract R2 image URLs
+            urls = re.findall(r'https://[^\s]+\.r2\.dev/[^\s]+\.jpg', telegram_raw)
+            # Remove duplicates
+            seen = set()
+            for url in urls:
+                if url not in seen:
+                    seen.add(url)
+                    telegram_images.append(url)
+
+        # --- Parse WhatsApp ---
+        whatsapp_images = []
+        greenapi = services.get("greenapi", {})
+        avatar_url = greenapi.get("avatar_url")
+        if avatar_url:
+            whatsapp_images.append(avatar_url)
+        r2_url = greenapi.get("r2_avatar_url")
+        if r2_url and r2_url != avatar_url:
+            whatsapp_images.append(r2_url)
+
+        return {
+            "telegram_name": telegram_name,
+            "whatsapp_images": whatsapp_images,
+            "telegram_images": telegram_images
+        }
+
+    except Exception as e:
+        logger.error(f"Lynxio lookup failed: {e}")
+        return None
+
+# ============ UPDATED format_result ============
+def format_result(number, unitech_data, truecaller_data, lynxio_data=None):
+    result = []
+    result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
+    result.append(f"📱 **Number:** +880{number}")
+    result.append("=" * 50)
+    
+    result.append("\n📋 **DAILY USAGES NAME:**")
+    if unitech_data and unitech_data.get('status') == True:
+        data = unitech_data.get('data', {})
+        full_name = data.get('fullName')
+        if full_name:
+            result.append(f"✅ **Name 1:** {full_name}")
+        else:
+            result.append("❌ **Name 1:** Not Found")
+        
+        other_names = data.get('otherNames', [])
+        if other_names:
+            for idx, item in enumerate(other_names, start=2):
+                name = item.get('name', '[Unnamed]')
+                result.append(f"✅ **Name {idx}:** {name}")
+        else:
+            result.append("❌ **Other Names:** Not Found")
+    else:
+        result.append("❌ **Information unavailable**")
+    
+    result.append("\n📋 **COMMON NAMES:**")
+    if truecaller_data:
+        basic_info = truecaller_data.get('data', {}).get('basicInfo', {})
+        name_info = basic_info.get('name', {})
+        full_name = name_info.get('fullName', 'N/A')
+        alt_name = name_info.get('altName', '')
+        result.append(f"✅ **Name 6:** {full_name}")
+        if alt_name and alt_name.strip() and alt_name != "N/A":
+            result.append(f"✅ **Name 7:** {alt_name}")
+        
+        suggestions = truecaller_data.get('data', {}).get('communitySuggestions', [])
+        if suggestions:
+            result.append(f"💡 **Other Suggestions:** {', '.join(suggestions[:5])}")
+    else:
+        result.append("❌ **Information unavailable**")
+    
+    # Add "Unknown Source Says:" if Telegram name exists
+    telegram_name = lynxio_data.get('telegram_name') if lynxio_data else None
+    if telegram_name:
+        result.append(f"**Unknown Source Says:** {telegram_name}")
+    else:
+        result.append("**Unknown Source Says:** N/A")
+    
+    # ============ SOCIAL ID (with WhatsApp & Telegram presence) ============
+    result.append("\n📋 **SOCIAL ID:**")
+    if unitech_data and unitech_data.get('status') == True:
+        data = unitech_data.get('data', {})
+        fb_data = data.get('facebookID', {})
+        fb_id = fb_data.get('id', 'N/A')
+        fb_url = fb_data.get('url', 'N/A')
+        result.append(f"**FB ID:** {fb_id}")
+        result.append(f"**FB Profile Link:** {fb_url}")
+    else:
+        result.append("**FB ID:** N/A")
+        result.append("**FB Profile Link:** N/A")
+    
+    # WhatsApp presence
+    whatsapp_exists = False
+    if lynxio_data:
+        whatsapp_images = lynxio_data.get('whatsapp_images', [])
+        if whatsapp_images:
+            whatsapp_exists = True
+    if whatsapp_exists:
+        result.append("**WhatsApp:** This number is on WhatsApp.")
+    else:
+        result.append("**WhatsApp:** This number is NOT on WhatsApp.")
+    
+    # Telegram presence
+    telegram_exists = False
+    if lynxio_data and lynxio_data.get('telegram_name'):
+        telegram_exists = True
+    if telegram_exists:
+        result.append("**Telegram:** This number is on Telegram.")
+    else:
+        result.append("**Telegram:** This number is NOT on Telegram.")
+    # ======================================================================
+    
+    result.append("\n" + "=" * 50)
+    result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    result.append("🤖 **Bot Says:** Enjoy")
+    
+    return "\n".join(result)
 
 # ============ MEMBERSHIP CHECK ============
 async def check_membership(user_id, context):
@@ -200,168 +376,974 @@ async def check_membership(user_id, context):
         )
         if channel_member.status in ['left', 'kicked']:
             return False, "channel"
+        
         group_member = await context.bot.get_chat_member(
             chat_id=REQUIRED_GROUP, user_id=user_id
         )
         if group_member.status in ['left', 'kicked']:
             return False, "group"
+        
         return True, None
     except Exception as e:
         logger.error(f"Membership check failed: {e}")
         return False, "error"
 
-# ============ OWNER NOTIFICATION ============
-async def notify_owner(context, user, url, debug_html=None):
-    if not OWNER_ID:
-        return
-    name = user.full_name or "N/A"
-    username = f"@{user.username}" if user.username else "N/A"
-    user_id = user.id
-    now_bd = datetime.now(BD_TIMEZONE)
-    timestamp = now_bd.strftime("%Y-%m-%d %I:%M:%S %p")
-    msg = f"📩 **New Facebook URL Submitted**\n\n"
-    msg += f"**Full Name:** {name}\n"
-    msg += f"**Username:** {username}\n"
-    msg += f"**User ID:** `{user_id}`\n"
-    msg += f"**URL:** {url}\n"
-    msg += f"**Timestamp (BD):** {timestamp}"
-    if debug_html:
-        msg += f"\n\n**Debug HTML Snippet:**\n```\n{debug_html}\n```"
-    try:
-        await context.bot.send_message(chat_id=OWNER_ID, text=msg, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Failed to notify owner: {e}")
+# ============ CREDIT & USER DATA SYSTEM ============
+def load_user_data():
+    if os.path.exists(USER_DATA_FILE):
+        with open(USER_DATA_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_user_data(data):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump(data, f)
+
+def ensure_user_exists(user_id, first_name=None, username=None):
+    data = load_user_data()
+    user_id_str = str(user_id)
+    if user_id_str not in data:
+        data[user_id_str] = {
+            "credits": FREE_CREDITS_AMOUNT,
+            "last_reset": time.time(),
+            "referred_users": [],
+            "banned": False,
+            "bonus_credits": [],
+            "first_name": first_name,
+            "username": username,
+            "joined": time.time(),
+            "admin_credits_expiry": None
+        }
+        save_user_data(data)
+    else:
+        updated = False
+        if first_name and data[user_id_str].get("first_name") != first_name:
+            data[user_id_str]["first_name"] = first_name
+            updated = True
+        if username and data[user_id_str].get("username") != username:
+            data[user_id_str]["username"] = username
+            updated = True
+        if updated:
+            save_user_data(data)
+    return data[user_id_str]
+
+def get_user_data(user_id):
+    data = load_user_data()
+    user_id_str = str(user_id)
+    if user_id_str not in data:
+        data[user_id_str] = {
+            "credits": FREE_CREDITS_AMOUNT,
+            "last_reset": time.time(),
+            "referred_users": [],
+            "banned": False,
+            "bonus_credits": [],
+            "first_name": None,
+            "username": None,
+            "joined": time.time(),
+            "admin_credits_expiry": None
+        }
+        save_user_data(data)
+    return data[user_id_str]
+
+def update_user_data(user_id, new_data):
+    data = load_user_data()
+    user_id_str = str(user_id)
+    data[user_id_str] = new_data
+    save_user_data(data)
+
+def ensure_monthly_credits(user_id):
+    user = get_user_data(user_id)
+    now = time.time()
+    admin_expiry = user.get("admin_credits_expiry")
+    if admin_expiry and admin_expiry > now:
+        return user
+    else:
+        last_reset = user.get("last_reset", 0)
+        if now - last_reset >= FREE_CREDITS_PERIOD * 24 * 3600:
+            user["credits"] = user.get("credits", 0) + FREE_CREDITS_AMOUNT
+            user["last_reset"] = now
+            if admin_expiry and admin_expiry <= now:
+                user["admin_credits_expiry"] = None
+            update_user_data(user_id, user)
+    return user
+
+def get_bonus_credits(user_id):
+    user = get_user_data(user_id)
+    bonus_list = user.get("bonus_credits", [])
+    now = time.time()
+    total = 0
+    for item in bonus_list:
+        if item.get("expiry", 0) > now:
+            total += item.get("amount", 0)
+    return total
+
+def get_credits(user_id):
+    user = ensure_monthly_credits(user_id)
+    free = user.get("credits", 0)
+    bonus = get_bonus_credits(user_id)
+    admin_expiry = user.get("admin_credits_expiry")
+    if admin_expiry and admin_expiry <= time.time():
+        return bonus
+    return free + bonus
+
+def deduct_credit(user_id):
+    if OWNER_ID and user_id == OWNER_ID:
+        return True
+
+    user = ensure_monthly_credits(user_id)
+    total = get_credits(user_id)
+
+    if total < 2:
+        return False
+
+    free = user.get("credits", 0)
+    need = 2
+
+    if free > 0:
+        take = min(free, need)
+        user["credits"] = free - take
+        need -= take
+
+    if need > 0:
+        bonus_list = user.get("bonus_credits", [])
+        now = time.time()
+        for item in bonus_list:
+            if need <= 0:
+                break
+            if item.get("expiry", 0) > now and item.get("amount", 0) > 0:
+                take = min(item["amount"], need)
+                item["amount"] -= take
+                need -= take
+        user["bonus_credits"] = [
+            item for item in bonus_list
+            if item.get("amount", 0) > 0 and item.get("expiry", 0) > now
+        ]
+
+    update_user_data(user_id, user)
+    return True
+
+def days_until_next_free(user_id):
+    user = get_user_data(user_id)
+    admin_expiry = user.get("admin_credits_expiry")
+    if admin_expiry and admin_expiry > time.time():
+        remaining = max(0, admin_expiry - time.time())
+        return int(remaining // (24 * 3600)) + 1
+    last_reset = user.get("last_reset", 0)
+    next_reset = last_reset + FREE_CREDITS_PERIOD * 24 * 3600
+    remaining = max(0, next_reset - time.time())
+    return int(remaining // (24 * 3600)) + 1
+
+def give_referral_credits(referrer_id, new_user_id):
+    if referrer_id == new_user_id:
+        return False
+    referrer_data = get_user_data(referrer_id)
+    referred_list = referrer_data.get("referred_users", [])
+    if str(new_user_id) in referred_list:
+        return False
+    referred_list.append(str(new_user_id))
+    referrer_data["referred_users"] = referred_list
+    referrer_data["bonus_credits"] = referrer_data.get("bonus_credits", [])
+    referrer_data["bonus_credits"].append({
+        "amount": REFERRAL_REWARD,
+        "expiry": time.time() + 365 * 24 * 3600
+    })
+    update_user_data(referrer_id, referrer_data)
+    return True
+
+# ============ ADMIN FUNCTIONS ============
+def is_user_banned(user_id):
+    user = get_user_data(user_id)
+    return user.get("banned", False)
+
+def ban_user(user_id):
+    user = get_user_data(user_id)
+    user["banned"] = True
+    update_user_data(user_id, user)
+
+def unban_user(user_id):
+    user = get_user_data(user_id)
+    user["banned"] = False
+    update_user_data(user_id, user)
+
+def add_bonus_credits(user_id, amount, expiry_timestamp):
+    user = get_user_data(user_id)
+    user["bonus_credits"] = user.get("bonus_credits", [])
+    user["bonus_credits"].append({"amount": amount, "expiry": expiry_timestamp})
+    update_user_data(user_id, user)
+
+def set_credits_with_expiry(user_id, amount, expiry_timestamp):
+    user = get_user_data(user_id)
+    user["credits"] = amount
+    user["bonus_credits"] = []
+    user["admin_credits_expiry"] = expiry_timestamp
+    user["last_reset"] = expiry_timestamp
+    update_user_data(user_id, user)
+
+def get_all_users():
+    return load_user_data()
 
 # ============ KEYBOARDS ============
+def get_keyboard():
+    buttons = [
+        [KeyboardButton("🔍 Search Number")],
+        [
+            KeyboardButton("💰 Buy Credits"),
+            KeyboardButton("👥 Refer Friends"),
+            KeyboardButton("📊 My Credits")
+        ],
+        [KeyboardButton("📞 Contact Admin")]
+    ]
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
+
 def get_join_buttons():
     keyboard = [
         [
             InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
             InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
-        ],
-        [InlineKeyboardButton("✅ I've Joined", callback_data="verify_joined")]
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ============ HANDLERS ============
+def get_admin_keyboard():
+    buttons = [
+        [KeyboardButton("👥 User List")],
+        [KeyboardButton("🚫 Ban User")],
+        [KeyboardButton("✅ Unban User")],
+        [KeyboardButton("➕ Add Credits")],
+        [KeyboardButton("🔧 Set Credits")],
+        [KeyboardButton("🔍 Check Credits")],
+        [KeyboardButton("📢 Broadcast")],
+        [KeyboardButton("❌ Close Panel")]
+    ]
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
+
+# ============ TELEGRAM BOT HANDLERS ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    is_member, _ = await check_membership(user_id, context)
-    if is_member:
+    user_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    username = update.effective_user.username
+    ensure_user_exists(user_id, first_name, username)
+
+    referral_extra = None
+    if context.args:
+        arg = context.args[0]
+        if arg.startswith("ref_"):
+            referrer_id_str = arg.split("_")[1]
+            try:
+                referrer_id = int(referrer_id_str)
+                if referrer_id != user_id:
+                    success = give_referral_credits(referrer_id, user_id)
+                    if success:
+                        referral_extra = f"Referred by: `{referrer_id}`"
+                        try:
+                            await context.bot.send_message(
+                                chat_id=referrer_id,
+                                text=f"🎉 **You earned +{REFERRAL_REWARD} credits!**\n"
+                                     f"A new user joined using your referral link.",
+                                parse_mode='Markdown'
+                            )
+                        except Exception as e:
+                            logger.error(f"Could not notify referrer: {e}")
+            except ValueError:
+                pass
+
+    await notify_owner(context, update.effective_user, "Started Bot", extra=referral_extra)
+
+    if is_user_banned(user_id):
         await update.message.reply_text(
-            f"👋 Welcome, {user.first_name}!\n\n"
-            "Send me a Facebook profile URL and I will download the cover photo and profile picture.\n\n"
-            "Example:\n`https://www.facebook.com/username`\nor `https://www.facebook.com/profile.php?id=123456789`",
+            "🚫 **You are banned from using this bot.**\n"
+            "Contact the administrator for assistance.",
             parse_mode='Markdown'
         )
-    else:
+        return
+
+    is_member, missing = await check_membership(user_id, context)
+
+    if not is_member:
+        keyboard = [
+            [
+                InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
+                InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
+            ],
+            [InlineKeyboardButton("✅ I've Joined", callback_data="verify_joined")]
+        ]
         await update.message.reply_text(
-            "❌ **Access Denied!**\n\nYou must join both the channel and group to use this bot:\n"
-            f"📢 Channel: {REQUIRED_CHANNEL}\n👥 Group: {REQUIRED_GROUP}\n\n"
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
             "After joining, click the button below to verify.",
             parse_mode='Markdown',
-            reply_markup=get_join_buttons()
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return
+
+    user = update.effective_user
+    welcome_text = f"""
+👋 **Welcome to Number Lookup Bot!**
+
+Hi {user.first_name}! Search a number to get its information.
+
+🎁 8 Free Credits / 30 Days
+🔎 1 Search = 2 Credits
+
+Your free credits renew automatically every 30 days.
+
+📌 **Commands:**
+/start — Restart the bot anytime
+/help — Number format guide
+"""
+    await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=get_keyboard())
 
 async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    user = update.effective_user
-    is_member, missing = await check_membership(user_id, context)
-    if is_member:
+
+    await notify_owner(context, update.effective_user, "Verified Joined")
+
+    if is_user_banned(user_id):
         await query.message.reply_text(
-            f"✅ Verification successful!\n\nWelcome, {user.first_name}!\nNow send any Facebook profile URL.",
+            "🚫 **You are banned from using this bot.**\n"
+            "Contact the administrator for assistance.",
             parse_mode='Markdown'
         )
-    else:
-        keyboard = get_join_buttons()
-        missing_text = "channel" if missing == "channel" else "group" if missing == "group" else "both"
-        await query.message.reply_text(
-            f"❌ You haven't joined the {missing_text} yet.\n\n"
-            f"📢 Channel: {REQUIRED_CHANNEL}\n👥 Group: {REQUIRED_GROUP}\n\n"
-            "After joining, click the button below to verify.",
-            parse_mode='Markdown',
-            reply_markup=keyboard
-        )
+        return
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 **How to use:**\nSend me a Facebook profile URL.\nI'll fetch cover and profile pictures.\n\n"
-        "Examples:\n`https://www.facebook.com/johndoe`\n`https://www.facebook.com/profile.php?id=123456789`",
-        parse_mode='Markdown'
+    try:
+        is_member, missing = await check_membership(user_id, context)
+    except Exception as e:
+        logger.error(f"Membership check error: {e}")
+        await query.message.reply_text(
+            "❌ **Verification failed.**\n\n"
+            "I couldn't check your membership. Please make sure I'm a member of both:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "If you're still having issues, contact the admin.",
+            parse_mode='Markdown'
+        )
+        return
+
+    if not is_member:
+        keyboard = [
+            [
+                InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
+                InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
+            ],
+            [InlineKeyboardButton("✅ I've Joined", callback_data="verify_joined")]
+        ]
+        if missing == "channel":
+            msg = "❌ **You haven't joined the channel yet.**\n\n"
+        elif missing == "group":
+            msg = "❌ **You haven't joined the group yet.**\n\n"
+        else:
+            msg = "❌ **You haven't joined both yet.**\n\n"
+        msg += f"📢 Channel: {REQUIRED_CHANNEL}\n"
+        msg += f"👥 Group: {REQUIRED_GROUP}\n\n"
+        msg += "After joining, click the button below to verify."
+        await query.message.reply_text(
+            msg,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    user = update.effective_user
+    welcome_text = f"""
+👋 **Welcome to Number Lookup Bot!**
+
+Hi {user.first_name}! Search a number to get its information.
+
+🎁 8 Free Credits / 30 Days
+🔎 1 Search = 2 Credits
+
+Your free credits renew automatically every 30 days.
+
+📌 **Commands:**
+/start — Restart the bot anytime
+/help — Number format guide
+"""
+    await query.message.reply_text(
+        welcome_text,
+        parse_mode='Markdown',
+        reply_markup=get_keyboard()
     )
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    text = update.message.text.strip()
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await notify_owner(context, update.effective_user, "Help Command")
 
-    is_member, _ = await check_membership(user_id, context)
+    user_id = update.effective_user.id
+    is_member, missing = await check_membership(user_id, context)
     if not is_member:
         await update.message.reply_text(
-            "❌ Access Denied! Please join channel & group and use /start.",
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
             parse_mode='Markdown',
             reply_markup=get_join_buttons()
         )
         return
 
-    if not re.search(r'(facebook\.com|fb\.com)', text, re.IGNORECASE):
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 **You are banned.**", parse_mode='Markdown')
+        return
+
+    help_text = """
+❓ **How to use:**
+Just send the phone number WITHOUT country code.
+
+✅ **Correct:** `1712345678`
+❌ **Wrong:** `+8801712345678`
+
+**Status:** 🟢 Online
+"""
+    await update.message.reply_text(help_text, parse_mode='Markdown', reply_markup=get_keyboard())
+
+async def buy_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await notify_owner(context, update.effective_user, "Buy Credits")
+
+    user_id = update.effective_user.id
+    is_member, _ = await check_membership(user_id, context)
+    if not is_member:
         await update.message.reply_text(
-            "❌ I only accept Facebook profile URLs.\nExample: `https://www.facebook.com/username`",
-            parse_mode='Markdown'
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
+        )
+        return
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
+    pricing = """
+💰 **Buy Credits**
+
+50 Credits = 50 tk (30 days)
+100 Credits = 100 tk (30 days)
+Unlimited Credit = 350 tk (30 days)
+"""
+    keyboard = [[InlineKeyboardButton("💳 Buy Credits", url="https://t.me/team420_contact_admin_bot")]]
+    await update.message.reply_text(
+        pricing,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def refer_friends(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    bot_username = context.bot.username or "number2infolookup_bot"
+    referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    await notify_owner(context, update.effective_user, "Refer Friends", extra=f"Link: {referral_link}")
+
+    is_member, _ = await check_membership(user_id, context)
+    if not is_member:
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
+        )
+        return
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
+    msg = f"""
+👥 **Refer Friends**
+
+Share your referral link with friends:
+
+`{referral_link}`
+
+When a friend joins using this link, you get **+{REFERRAL_REWARD} free credits**!
+
+👤 Your current credits: **{get_credits(user_id)}**
+"""
+    keyboard = [[InlineKeyboardButton("📋 Tap and Hold to Copy Referral Link", url=referral_link)]]
+    await update.message.reply_text(
+        msg,
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def my_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    credits = get_credits(user_id)
+    days_left = days_until_next_free(user_id)
+    await notify_owner(context, update.effective_user, "My Credits", extra=f"Credits: {credits}, Next free in {days_left} days")
+
+    is_member, _ = await check_membership(user_id, context)
+    if not is_member:
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
+        )
+        return
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
+    owner_note = " (Owner – unlimited)" if (OWNER_ID and user_id == OWNER_ID) else ""
+    msg = f"""
+📊 **Your Credits{owner_note}**
+
+Remaining Credits: **{credits}**
+
+📅 Next free credits: in **{days_left}** day(s)
+(You get {FREE_CREDITS_AMOUNT} free credits every {FREE_CREDITS_PERIOD} days)
+"""
+    await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=get_keyboard())
+
+async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await notify_owner(context, update.effective_user, "Contact Admin")
+
+    user_id = update.effective_user.id
+    is_member, _ = await check_membership(user_id, context)
+    if not is_member:
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
+        )
+        return
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
+    msg = "📞 **Contact Admin**\n\nIf you need help or have any issues, you can contact our admin via the bot below:\n\nClick the button to start a chat with the admin bot."
+    keyboard = [[InlineKeyboardButton("👤 Contact Admin", url="https://t.me/team420_contact_admin_bot")]]
+    await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await notify_owner(context, update.effective_user, "Search Button Clicked")
+
+    user_id = update.effective_user.id
+    is_member, _ = await check_membership(user_id, context)
+    if not is_member:
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
+        )
+        return
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
+    await update.message.reply_text(
+        "📱 Please send the phone number **without** country code.\n\n"
+        "Example: `1712345678`",
+        parse_mode='Markdown',
+        reply_markup=get_keyboard()
+    )
+
+# ============ UPDATED handle_message ============
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_ID and context.user_data.get("admin_action"):
+        await handle_admin_input(update, context)
+        return
+
+    is_member, missing = await check_membership(user_id, context)
+    if not is_member:
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "You must join both the channel and group to use this bot:\n"
+            f"📢 Channel: {REQUIRED_CHANNEL}\n"
+            f"👥 Group: {REQUIRED_GROUP}\n\n"
+            "Please join and try again.",
+            parse_mode='Markdown',
+            reply_markup=get_join_buttons()
         )
         return
 
-    processing_msg = await update.message.reply_text("📸 Fetching Facebook images...", parse_mode='Markdown')
-    try:
-        cover, profile, debug_html = extract_facebook_images(text)
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
 
-        # Always notify owner
-        await notify_owner(context, user, text, debug_html if not cover and not profile else None)
+    user_input = update.message.text.strip()
 
-        if not cover and not profile:
-            await processing_msg.edit_text(
-                "❌ **No images found.**\n"
-                "Make sure the profile is public or the URL is correct.\n"
-                "Admin has been notified with debug info.",
-                parse_mode='Markdown'
+    if not (OWNER_ID and user_id == OWNER_ID):
+        credits = get_credits(user_id)
+        if credits <= 0:
+            await update.message.reply_text(
+                "❌ **Insufficient Credits!**\n\n"
+                "You have 0 credits. Please use **Buy Credits** or **Refer Friends** to get more.\n"
+                "You'll also receive free credits every 30 days.",
+                parse_mode='Markdown',
+                reply_markup=get_keyboard()
             )
             return
 
+    if not re.match(r'^1[0-9]{9}$', user_input):
+        await update.message.reply_text(
+            "❌ **Invalid format!**\n\nSend: `1712345678`\nDon't include: +880 or 0",
+            parse_mode='Markdown',
+            reply_markup=get_keyboard()
+        )
+        return
+
+    await notify_owner(context, update.effective_user, "Number Lookup Request", extra=f"Phone: +880{user_input}")
+
+    if not deduct_credit(user_id):
+        await update.message.reply_text(
+            "❌ **Insufficient Credits!**\n\n"
+            "You have 0 credits. Please use **Buy Credits** or **Refer Friends** to get more.",
+            parse_mode='Markdown',
+            reply_markup=get_keyboard()
+        )
+        return
+
+    processing_msg = await update.message.reply_text("🔍 **Processing...**", parse_mode='Markdown')
+    try:
+        # --- Get Unitech & Truecaller data ---
+        access_token = generate_access_token()
+        if not access_token:
+            await processing_msg.edit_text("❌ **Error:** Authentication failed.")
+            return
+
+        unitech_data = unitech_lookup(user_input, access_token)
+        truecaller_data = None
+        if user_input.startswith('1'):
+            truecaller_data = truecaller_search(user_input)
+
+        # --- Get Lynxio data (WhatsApp + Telegram) ---
+        lynxio_data = lynxio_lookup(user_input)
+
+        # Collect all image URLs (Unitech + WhatsApp + Telegram)
+        all_image_urls = []
+        # Unitech image
+        if unitech_data and unitech_data.get('status') == True:
+            data = unitech_data.get('data', {})
+            img_url = data.get('image')
+            if not img_url:
+                images = data.get('images', [])
+                if images:
+                    img_url = images[0]
+            if img_url:
+                all_image_urls.append(img_url)
+        # WhatsApp and Telegram images from Lynxio
+        if lynxio_data:
+            all_image_urls.extend(lynxio_data.get('whatsapp_images', []))
+            all_image_urls.extend(lynxio_data.get('telegram_images', []))
+
+        # Build result text (pass lynxio_data to format_result)
+        result_text = format_result(user_input, unitech_data, truecaller_data, lynxio_data)
+
         await processing_msg.delete()
 
-        if cover:
-            await download_and_send_photo(context, update.effective_chat.id, cover, "🖼️ **Cover Photo**")
-        else:
-            await update.message.reply_text("⚠️ Cover photo not found.", parse_mode='Markdown')
+        # --- Send result as photo album (if images) or plain text ---
+        if all_image_urls:
+            # Download each image to temp files
+            temp_files = []
+            successful_downloads = []
+            for url in all_image_urls:
+                try:
+                    response = requests.get(url, timeout=15)
+                    if response.status_code == 200:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
+                            tmp.write(response.content)
+                            temp_files.append(tmp.name)
+                            successful_downloads.append(tmp.name)
+                except Exception as e:
+                    logger.error(f"Failed to download image {url}: {e}")
 
-        if profile:
-            await download_and_send_photo(context, update.effective_chat.id, profile, "👤 **Profile Picture**")
+            if successful_downloads:
+                # Send as media group (album)
+                media_group = []
+                for i, file_path in enumerate(successful_downloads):
+                    with open(file_path, 'rb') as photo:
+                        if i == 0:
+                            # First photo gets the caption
+                            media_group.append(InputMediaPhoto(media=photo, caption=result_text, parse_mode='Markdown'))
+                        else:
+                            media_group.append(InputMediaPhoto(media=photo))
+                await update.message.reply_media_group(media=media_group)
+                # Delete all temp files
+                for file_path in successful_downloads:
+                    try:
+                        os.remove(file_path)
+                    except:
+                        pass
+            else:
+                # If no images downloaded successfully, send text
+                await update.message.reply_text(result_text, parse_mode='Markdown')
         else:
-            await update.message.reply_text("⚠️ Profile picture not found.", parse_mode='Markdown')
-
-        await update.message.reply_text(
-            f"✅ **Download Complete!**\n\n🔗 URL: {text}\n🖼️ Cover: {'✅' if cover else '❌'}\n👤 Profile: {'✅' if profile else '❌'}",
-            parse_mode='Markdown'
-        )
+            # No images at all – send plain text
+            await update.message.reply_text(result_text, parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        await processing_msg.edit_text("❌ Error: Something went wrong. Please try again later.")
+        await processing_msg.edit_text("❌ **Error:** Something went wrong.")
+# ======================================================================================
+
+# ============ ADMIN COMMAND ============
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != OWNER_ID:
+        await update.message.reply_text("⛔ You are not authorized.")
+        return
+    context.user_data.pop("admin_action", None)
+    await update.message.reply_text(
+        "🛠 **Admin Panel**\nSelect an action:",
+        reply_markup=get_admin_keyboard(),
+        parse_mode='Markdown'
+    )
+
+# ============ ADMIN INPUT HANDLER ============
+async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != OWNER_ID:
+        return
+    action = context.user_data.get("admin_action")
+    if not action:
+        return
+    text = update.message.text.strip()
+    context.user_data.pop("admin_action", None)
+
+    if action == "ban_user":
+        try:
+            target = int(text)
+            if is_user_banned(target):
+                await update.message.reply_text("ℹ️ User is already banned.")
+            else:
+                ban_user(target)
+                await update.message.reply_text(f"✅ User `{target}` has been banned.", parse_mode='Markdown')
+        except ValueError:
+            await update.message.reply_text("❌ Invalid chat ID.")
+        return
+
+    if action == "unban_user":
+        try:
+            target = int(text)
+            if not is_user_banned(target):
+                await update.message.reply_text("ℹ️ User is not banned.")
+            else:
+                unban_user(target)
+                await update.message.reply_text(f"✅ User `{target}` has been unbanned.", parse_mode='Markdown')
+        except ValueError:
+            await update.message.reply_text("❌ Invalid chat ID.")
+        return
+
+    if action == "check_credits":
+        try:
+            target = int(text)
+            user_data = get_user_data(target)
+            credits = get_credits(target)
+            free = user_data.get("credits", 0)
+            bonus = get_bonus_credits(target)
+            banned = "Banned" if user_data.get("banned") else "Active"
+            msg = f"📊 **Credits for user `{target}`**\n"
+            msg += f"Free credits: {free}\n"
+            msg += f"Bonus credits: {bonus}\n"
+            msg += f"Total: {credits}\n"
+            msg += f"Status: {banned}\n"
+            bonus_list = user_data.get("bonus_credits", [])
+            if bonus_list:
+                msg += "\n**Bonus entries:**\n"
+                for i, item in enumerate(bonus_list, 1):
+                    expiry = datetime.fromtimestamp(item["expiry"]).strftime("%d-%m-%Y")
+                    msg += f"{i}. {item['amount']} credits (expires {expiry})\n"
+            admin_expiry = user_data.get("admin_credits_expiry")
+            if admin_expiry and admin_expiry > time.time():
+                exp = datetime.fromtimestamp(admin_expiry).strftime("%d-%m-%Y")
+                msg += f"\n📌 Admin-set credits expire on {exp}"
+            await update.message.reply_text(msg, parse_mode='Markdown')
+        except ValueError:
+            await update.message.reply_text("❌ Invalid chat ID.")
+        return
+
+    if action == "add_credits":
+        parts = text.split()
+        if len(parts) != 3:
+            await update.message.reply_text("❌ Format: `user_id amount dd-mm-yyyy`")
+            return
+        try:
+            target = int(parts[0])
+            amount = int(parts[1])
+            expiry_date = datetime.strptime(parts[2], "%d-%m-%Y")
+            expiry_timestamp = expiry_date.timestamp()
+            add_bonus_credits(target, amount, expiry_timestamp)
+            await update.message.reply_text(
+                f"✅ Added {amount} credits to user `{target}` until {expiry_date.strftime('%d-%m-%Y')}.",
+                parse_mode='Markdown'
+            )
+        except ValueError as e:
+            await update.message.reply_text(f"❌ Invalid input: {e}")
+        return
+
+    if action == "set_credits":
+        parts = text.split()
+        if len(parts) != 3:
+            await update.message.reply_text("❌ Format: `user_id amount dd-mm-yyyy`")
+            return
+        try:
+            target = int(parts[0])
+            amount = int(parts[1])
+            expiry_date = datetime.strptime(parts[2], "%d-%m-%Y")
+            expiry_timestamp = expiry_date.timestamp()
+            set_credits_with_expiry(target, amount, expiry_timestamp)
+            await update.message.reply_text(
+                f"✅ Set credits for user `{target}` to {amount} until {expiry_date.strftime('%d-%m-%Y')}.\n"
+                "All previous credits (free & bonus) have been replaced.",
+                parse_mode='Markdown'
+            )
+        except ValueError as e:
+            await update.message.reply_text(f"❌ Invalid input: {e}")
+        return
+
+    if action == "broadcast":
+        msg_text = text
+        users = get_all_users()
+        sent_count = 0
+        failed_count = 0
+        for uid_str, data in users.items():
+            uid = int(uid_str)
+            if uid == OWNER_ID:
+                continue
+            if data.get("banned", False):
+                continue
+            try:
+                await context.bot.send_message(chat_id=uid, text=msg_text, parse_mode='Markdown')
+                sent_count += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.error(f"Failed to send broadcast to {uid}: {e}")
+                failed_count += 1
+        await update.message.reply_text(
+            f"✅ **Broadcast sent!**\n\n"
+            f"Delivered to: {sent_count} users\n"
+            f"Failed: {failed_count}\n"
+            f"Total users (excluding banned and owner): {sent_count + failed_count}"
+        )
+        return
+
+    await update.message.reply_text("Unknown action. Use /admin again.")
+
+# ============ ADMIN BUTTON HANDLER ============
+async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != OWNER_ID:
+        await update.message.reply_text("⛔ Unauthorized.")
+        return
+
+    text = update.message.text
+    if text == "❌ Close Panel":
+        context.user_data.pop("admin_action", None)
+        await update.message.reply_text("🔒 Admin panel closed.", reply_markup=get_keyboard())
+        return
+
+    action_map = {
+        "👥 User List": "user_list",
+        "🚫 Ban User": "ban_user",
+        "✅ Unban User": "unban_user",
+        "➕ Add Credits": "add_credits",
+        "🔧 Set Credits": "set_credits",
+        "🔍 Check Credits": "check_credits",
+        "📢 Broadcast": "broadcast"
+    }
+    if text in action_map:
+        action = action_map[text]
+        if action == "user_list":
+            users = get_all_users()
+            if not users:
+                await update.message.reply_text("📭 No users found.")
+                return
+            msg = "👥 **User List**\n\n"
+            for uid, data in users.items():
+                name = data.get("first_name", "N/A")
+                username = data.get("username", "N/A")
+                credits = get_credits(int(uid))
+                banned = "🚫" if data.get("banned") else "✅"
+                joined = datetime.fromtimestamp(data.get("joined", 0)).strftime("%d-%m-%Y")
+                msg += f"**ID:** `{uid}`\n"
+                msg += f"**Name:** {name}\n"
+                msg += f"**Username:** @{username}\n"
+                msg += f"**Credits:** {credits}\n"
+                msg += f"**Status:** {banned}\n"
+                msg += f"**Joined:** {joined}\n\n"
+            if len(msg) > 4000:
+                parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+                for part in parts:
+                    await update.message.reply_text(part, parse_mode='Markdown')
+                    await asyncio.sleep(0.1)
+            else:
+                await update.message.reply_text(msg, parse_mode='Markdown')
+            return
+
+        prompts = {
+            "ban_user": "🚫 Send the **chat ID** of the user to ban:",
+            "unban_user": "✅ Send the **chat ID** of the user to unban:",
+            "check_credits": "🔍 Send the **chat ID** of the user to check credits:",
+            "add_credits": "➕ Send in format:\n`user_id amount dd-mm-yyyy`\ne.g. `123456789 10 29-08-2026`",
+            "set_credits": "🔧 Send in format:\n`user_id amount dd-mm-yyyy`\ne.g. `123456789 50 29-08-2026`",
+            "broadcast": "📢 Send your broadcast message:"
+        }
+        if action in prompts:
+            context.user_data["admin_action"] = action
+            await update.message.reply_text(prompts[action], parse_mode='Markdown')
+        else:
+            await update.message.reply_text("Unknown action.")
+    else:
+        pass
 
 # ============ MAIN ============
 def main():
-    print("🤖 Bot starting... (Facebook Downloader)")
+    print("🤖 Bot starting...")
+    print(f"📌 Bot Token: {'✅ Set' if BOT_TOKEN else '❌ Not Set'}")
     if OWNER_ID:
-        print(f"👤 Owner ID: {OWNER_ID}")
+        print(f"👤 Owner ID: {OWNER_ID} (exempt from credit deduction)")
+    else:
+        print("ℹ️ No owner set – all users consume credits.")
+
+    if not BOT_TOKEN:
+        print("❌ Please set BOT_TOKEN environment variable!")
+        return
+
     application = Application.builder().token(BOT_TOKEN).build()
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("admin", admin_command))
+
     application.add_handler(CallbackQueryHandler(verify_joined_callback, pattern="^verify_joined$"))
+
+    application.add_handler(MessageHandler(
+        filters.Regex('^(👥 User List|🚫 Ban User|✅ Unban User|➕ Add Credits|🔧 Set Credits|🔍 Check Credits|📢 Broadcast|❌ Close Panel)$'),
+        handle_admin_buttons
+    ))
+
+    application.add_handler(MessageHandler(filters.Regex('^🔍 Search Number$'), search_button_handler))
+    application.add_handler(MessageHandler(filters.Regex('^💰 Buy Credits$'), buy_credits))
+    application.add_handler(MessageHandler(filters.Regex('^👥 Refer Friends$'), refer_friends))
+    application.add_handler(MessageHandler(filters.Regex('^📊 My Credits$'), my_credits))
+    application.add_handler(MessageHandler(filters.Regex('^📞 Contact Admin$'), contact_admin))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("✅ Bot is running!")
+
+    print("✅ Bot is running! Press Ctrl+C to stop.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
