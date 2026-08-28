@@ -3,17 +3,14 @@ warnings.filterwarnings("ignore", category=Warning)
 
 import requests
 import json
-import http.client
 import logging
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import os
 import re
 from datetime import datetime
 import time
 import asyncio
-import tempfile
-import secrets
 import random
 
 # ============ CONFIGURATION ============
@@ -37,15 +34,13 @@ logger = logging.getLogger(__name__)
 REFRESH_TOKEN = "AMf-vBx2NF07mspl6qH2dBUBNE0DWkwyrjMvqElbwXoq8fA07xd4oaTPho8OWo_wwCmACHqgWn7ZMKYOqiTV4_UX4P5xNT78c_uR-DHa1aqPw1zznx5LgZ03dA3biu9u9IEsvprr6mzDcSAvH7A9-bdIkVG_O2EeV92e2oswF-WniYoKDmRKUGfJ-PNOnWD0Ttg7jGsKk9XLbNQFsLpp4iQ6uGIgZ3OIhA"
 TOKEN_URL = "https://securetoken.googleapis.com/v1/token?key=AIzaSyAtRVK71cLulaRpQCQ3C8YAB-jV5lQ-0kQ"
 UNITECH_URL = "https://lookup.unitechapps.in/"
-TRUECALLER_HOST = "truecaller-data2.p.rapidapi.com"
-TRUECALLER_KEY = "c39837c529msh8fabb88e2647693p12fad5jsnc43e4c82d45e"
 
-REQUIRED_CHANNEL = "@InfinitelyInteresting"
+REQUIRED_CHANNEL = "@team420bd"
 REQUIRED_GROUP = "@team_420_bd"
 
 USER_DATA_FILE = "user_data.json"
 FREE_CREDITS_PERIOD = 30
-FREE_CREDITS_AMOUNT = 8
+FREE_CREDITS_AMOUNT = 12
 REFERRAL_REWARD = 2
 
 # ============ OWNER NOTIFICATION ============
@@ -71,12 +66,51 @@ async def notify_owner(context, user, activity, extra=None):
         logger.error(f"Failed to notify owner: {e}")
 
 # ============ TOKEN GENERATION ============
+def _generate_random_headers():
+    """Generate a random User-Agent, keep all other headers static."""
+    base_headers = {
+        "Content-Type": "application/json",
+        "X-Android-Package": "com.uni.tech.numberlookup",
+        "X-Android-Cert": "61ED377E85D386A8DFEE6B864BD85B0BFAA5AF81",
+        "Accept-Language": "en-US",
+        "X-Client-Version": "Android/Fallback/X24001000/FirebaseCore-Android",
+        "X-Firebase-GMPID": "1:1067701877947:android:8c30e3edca32c5cd383d9e",
+        "X-Firebase-Client": "H4sIAAAAAAAA_6tWykhNLCpJSk0sKVayio7VUSpLLSrOzM9TslIyUqoFAFyivEQfAAAA",
+        "X-Firebase-AppCheck": "eyJlcnJvciI6IlVOS05PV05fRVJST1IifQ==",
+        "Host": "securetoken.googleapis.com",
+        "Connection": "Keep-Alive",
+        "Accept-Encoding": "gzip"
+    }
+    
+    device_models = [
+        "SM-S921B", "SM-S928B", "SM-A556B", "SM-M546B", "SM-G991B",
+        "SM-N986B", "SM-F956B", "SM-F731B", "SM-A356B",
+        "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
+        "Pixel-8-Pro", "Pixel-7-Pro", "Pixel-6", "Pixel-9-Pro",
+        "M2011K2G", "M2101K9G", "2211133G", "23013PC75G",
+        "OnePlus-12", "OnePlus-11", "OnePlus-10-Pro",
+        "CPH2609", "CPH2451", "Find-X7-Pro", "Find-X5-Pro",
+        "V2230", "V2244", "X90-Pro", "X100-Pro",
+        "RMX3370", "RMX3841", "GT-Neo-5", "Realme-11-Pro",
+        "XT2301-1", "Moto-G84", "Edge-40-Pro", "Edge-50-Ultra",
+        "LYA-L09", "ELE-L29", "NOH-NX9", "P40-Pro",
+        "Nothing-Phone-2", "Nothing-Phone-1",
+        "XQ-DQ72", "Xperia-1-V", "Xperia-5-IV",
+        "LG-V600", "LM-G900"
+    ]
+    android_versions = ["10", "11", "12", "13", "14", "15"]
+    model = random.choice(device_models)
+    version = random.choice(android_versions)
+    build = "AP3A.240905.015.A2"
+    user_agent = f"Dalvik/2.1.0 (Linux; U; Android {version}; {model} Build/{build})"
+    
+    headers = base_headers.copy()
+    headers["User-Agent"] = user_agent
+    return headers
+
 def generate_access_token():
     try:
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Dart/3.12 (dart:io)",
-        }
+        headers = _generate_random_headers()
         data = {"grantType": "refresh_token", "refreshToken": REFRESH_TOKEN}
         response = requests.post(TOKEN_URL, headers=headers, json=data, timeout=10)
         response.raise_for_status()
@@ -85,7 +119,7 @@ def generate_access_token():
         logger.error(f"Token generation failed: {e}")
         return None
 
-# ============ API FUNCTIONS ============
+# ============ UNITECH API ============
 def unitech_lookup(number, access_token):
     try:
         url = "https://lookup.unitechapps.in/"
@@ -108,179 +142,8 @@ def unitech_lookup(number, access_token):
         logger.error(f"Unitech API error: {e}")
         return None
 
-def truecaller_search(number):
-    try:
-        conn = http.client.HTTPSConnection(TRUECALLER_HOST)
-        headers = {
-            "x-rapidapi-key": TRUECALLER_KEY,
-            "x-rapidapi-host": TRUECALLER_HOST
-        }
-        conn.request("GET", f"/search/+880{number}", headers=headers)
-        res = conn.getresponse()
-        if res.status == 200:
-            data = res.read()
-            return json.loads(data.decode("utf-8"))
-        return None
-    except Exception as e:
-        logger.error(f"Truecaller API error: {e}")
-        return None
-
-# ============ LYNXIO API (WhatsApp + Telegram) ============
-DEVICE_MODELS = [
-    "SM-S921B", "SM-S928B", "SM-A556B", "SM-M546B", "SM-G991B",
-    "SM-N986B", "SM-F956B", "SM-F731B", "SM-A356B",
-    "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
-    "iPhone17,1", "iPhone17,2", "iPhone14,5",
-    "Pixel-8-Pro", "Pixel-7-Pro", "Pixel-6", "Pixel-9-Pro",
-    "Pixel-6a", "Pixel-7a", "Pixel-8",
-    "M2011K2G", "M2101K9G", "2211133G", "23013PC75G",
-    "Xiaomi-14-Pro", "Xiaomi-13T", "Xiaomi-12-Pro",
-    "OnePlus-12", "OnePlus-11", "OnePlus-10-Pro",
-    "OnePlus-Nord-CE-3", "OnePlus-9-Pro",
-    "CPH2609", "CPH2451", "Find-X7-Pro", "Find-X5-Pro",
-    "V2230", "V2244", "X90-Pro", "X100-Pro",
-    "RMX3370", "RMX3841", "GT-Neo-5", "Realme-11-Pro",
-    "XT2301-1", "Moto-G84", "Edge-40-Pro", "Edge-50-Ultra",
-    "LYA-L09", "ELE-L29", "NOH-NX9", "P40-Pro",
-    "Nothing-Phone-2", "Nothing-Phone-1",
-    "XQ-DQ72", "Xperia-1-V", "Xperia-5-IV",
-    "LG-V600", "LM-G900",
-]
-
-def generate_device_id():
-    hex_part = secrets.token_hex(8)
-    model = random.choice(DEVICE_MODELS)
-    timestamp = int(time.time() * 1000)
-    return f"{hex_part}-{model}-{timestamp}"
-
-def lynxio_lookup(number):
-    """
-    Check WhatsApp and Telegram presence for a phone number using Lynxio API.
-    Returns dict with:
-      - telegram_name: str or None
-      - whatsapp_images: list of image URLs (no labels)
-      - telegram_images: list of image URLs (no labels)
-    Returns None on failure.
-    """
-    try:
-        phone = f"+880{number}"
-        # Step 1: Guest token
-        device_id = generate_device_id()
-        guest_url = "https://api.lynxio.ovh/auth/guest-token"
-        guest_headers = {
-            "accept": "application/json, text/plain, */*",
-            "x-device-id": device_id,
-            "Content-Type": "application/json",
-            "Host": "api.lynxio.ovh",
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/4.11.0"
-        }
-        guest_res = requests.post(guest_url, headers=guest_headers, json={}, timeout=10)
-        guest_res.raise_for_status()
-        guest_data = guest_res.json()
-        api_key = guest_data.get("api_key")
-        if not api_key:
-            logger.error("Lynxio: No api_key in guest response")
-            return None
-
-        # Step 2: Search
-        search_url = "https://api.lynxio.ovh/jobs/api/v1/phone/search"
-        search_headers = {
-            "x-api-key": api_key,
-            "Content-Type": "application/json",
-            "Host": "api.lynxio.ovh",
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/4.11.0"
-        }
-        search_payload = {"phone": phone}
-        search_res = requests.post(search_url, headers=search_headers, json=search_payload, timeout=10)
-        search_res.raise_for_status()
-        search_data = search_res.json()
-        job_id = search_data.get("job_id")
-        if not job_id:
-            logger.error("Lynxio: No job_id returned")
-            return None
-
-        # Step 3: Poll status
-        status_url = f"https://api.lynxio.ovh/jobs/api/v1/job/{job_id}/status"
-        status_headers = {
-            "content-type": "application/json",
-            "x-api-key": api_key,
-            "Host": "api.lynxio.ovh",
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/4.11.0",
-            "If-Modified-Since": time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime())
-        }
-        final_data = None
-        for attempt in range(60):
-            status_res = requests.get(status_url, headers=status_headers, timeout=10)
-            if status_res.status_code != 200:
-                time.sleep(5)
-                continue
-            status_data = status_res.json()
-            current_status = status_data.get("status")
-            if current_status in ("pending", "running"):
-                time.sleep(5)
-                continue
-            final_data = status_data
-            break
-
-        if not final_data or final_data.get("status") != "completed":
-            logger.error("Lynxio: Job did not complete")
-            return None
-
-        result = final_data.get("result", {})
-        services = result.get("services_results", {})
-
-        # --- Parse Telegram ---
-        telegram_name = None
-        telegram_images = []
-        telegram_raw = services.get("telegram", {}).get("telegram_data", {}).get("raw_output", "")
-        # Check if Telegram account exists (if raw_output doesn't contain "No user was found")
-        if "No user was found" not in telegram_raw:
-            # Extract name
-            first_match = re.search(r"The current first name of the user .+? is (.+?)\n", telegram_raw)
-            last_match = re.search(r"The current last name of the user .+? is (.+?)\n", telegram_raw)
-            if first_match and last_match:
-                telegram_name = f"{first_match.group(1).strip()} {last_match.group(1).strip()}"
-            elif first_match:
-                telegram_name = first_match.group(1).strip()
-            elif last_match:
-                telegram_name = last_match.group(1).strip()
-            # Extract R2 image URLs
-            urls = re.findall(r'https://[^\s]+\.r2\.dev/[^\s]+\.jpg', telegram_raw)
-            # Remove duplicates
-            seen = set()
-            for url in urls:
-                if url not in seen:
-                    seen.add(url)
-                    telegram_images.append(url)
-
-        # --- Parse WhatsApp ---
-        whatsapp_images = []
-        greenapi = services.get("greenapi", {})
-        avatar_url = greenapi.get("avatar_url")
-        if avatar_url:
-            whatsapp_images.append(avatar_url)
-        r2_url = greenapi.get("r2_avatar_url")
-        if r2_url and r2_url != avatar_url:
-            whatsapp_images.append(r2_url)
-
-        return {
-            "telegram_name": telegram_name,
-            "whatsapp_images": whatsapp_images,
-            "telegram_images": telegram_images
-        }
-
-    except Exception as e:
-        logger.error(f"Lynxio lookup failed: {e}")
-        return None
-
-# ============ UPDATED format_result ============
-def format_result(number, unitech_data, truecaller_data, lynxio_data=None):
+# ============ FORMAT RESULT (ONLY NAMES FROM UNITECH) ============
+def format_result(number, unitech_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
     result.append(f"📱 **Number:** +880{number}")
@@ -304,63 +167,6 @@ def format_result(number, unitech_data, truecaller_data, lynxio_data=None):
             result.append("❌ **Other Names:** Not Found")
     else:
         result.append("❌ **Information unavailable**")
-    
-    result.append("\n📋 **COMMON NAMES:**")
-    if truecaller_data:
-        basic_info = truecaller_data.get('data', {}).get('basicInfo', {})
-        name_info = basic_info.get('name', {})
-        full_name = name_info.get('fullName', 'N/A')
-        alt_name = name_info.get('altName', '')
-        result.append(f"✅ **Name 6:** {full_name}")
-        if alt_name and alt_name.strip() and alt_name != "N/A":
-            result.append(f"✅ **Name 7:** {alt_name}")
-        
-        suggestions = truecaller_data.get('data', {}).get('communitySuggestions', [])
-        if suggestions:
-            result.append(f"💡 **Other Suggestions:** {', '.join(suggestions[:5])}")
-    else:
-        result.append("❌ **Information unavailable**")
-    
-    # Add "Unknown Source Says:" if Telegram name exists
-    telegram_name = lynxio_data.get('telegram_name') if lynxio_data else None
-    if telegram_name:
-        result.append(f"**Unknown Source Says:** {telegram_name}")
-    else:
-        result.append("**Unknown Source Says:** N/A")
-    
-    # ============ SOCIAL ID (with WhatsApp & Telegram presence) ============
-    result.append("\n📋 **SOCIAL ID:**")
-    if unitech_data and unitech_data.get('status') == True:
-        data = unitech_data.get('data', {})
-        fb_data = data.get('facebookID', {})
-        fb_id = fb_data.get('id', 'N/A')
-        fb_url = fb_data.get('url', 'N/A')
-        result.append(f"**FB ID:** {fb_id}")
-        result.append(f"**FB Profile Link:** {fb_url}")
-    else:
-        result.append("**FB ID:** N/A")
-        result.append("**FB Profile Link:** N/A")
-    
-    # WhatsApp presence
-    whatsapp_exists = False
-    if lynxio_data:
-        whatsapp_images = lynxio_data.get('whatsapp_images', [])
-        if whatsapp_images:
-            whatsapp_exists = True
-    if whatsapp_exists:
-        result.append("**WhatsApp:** This number is on WhatsApp.")
-    else:
-        result.append("**WhatsApp:** This number is NOT on WhatsApp.")
-    
-    # Telegram presence
-    telegram_exists = False
-    if lynxio_data and lynxio_data.get('telegram_name'):
-        telegram_exists = True
-    if telegram_exists:
-        result.append("**Telegram:** This number is on Telegram.")
-    else:
-        result.append("**Telegram:** This number is NOT on Telegram.")
-    # ======================================================================
     
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -412,7 +218,8 @@ def ensure_user_exists(user_id, first_name=None, username=None):
             "first_name": first_name,
             "username": username,
             "joined": time.time(),
-            "admin_credits_expiry": None
+            "admin_credits_expiry": None,
+            "last_search_time": 0   # <-- added
         }
         save_user_data(data)
     else:
@@ -440,9 +247,15 @@ def get_user_data(user_id):
             "first_name": None,
             "username": None,
             "joined": time.time(),
-            "admin_credits_expiry": None
+            "admin_credits_expiry": None,
+            "last_search_time": 0   # <-- added
         }
         save_user_data(data)
+    else:
+        # Ensure field exists for old users
+        if "last_search_time" not in data[user_id_str]:
+            data[user_id_str]["last_search_time"] = 0
+            save_user_data(data)
     return data[user_id_str]
 
 def update_user_data(user_id, new_data):
@@ -493,11 +306,11 @@ def deduct_credit(user_id):
     user = ensure_monthly_credits(user_id)
     total = get_credits(user_id)
 
-    if total < 2:
+    if total < 3:
         return False
 
     free = user.get("credits", 0)
-    need = 2
+    need = 3
 
     if free > 0:
         take = min(free, need)
@@ -587,7 +400,6 @@ def get_keyboard():
     buttons = [
         [KeyboardButton("🔍 Search Number")],
         [
-            KeyboardButton("💰 Buy Credits"),
             KeyboardButton("👥 Refer Friends"),
             KeyboardButton("📊 My Credits")
         ],
@@ -598,7 +410,7 @@ def get_keyboard():
 def get_join_buttons():
     keyboard = [
         [
-            InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
+            InlineKeyboardButton("📢 Join Channel", url="https://t.me/team420bd"),
             InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
         ]
     ]
@@ -662,7 +474,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_member:
         keyboard = [
             [
-                InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
+                InlineKeyboardButton("📢 Join Channel", url="https://t.me/team420bd"),
                 InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
             ],
             [InlineKeyboardButton("✅ I've Joined", callback_data="verify_joined")]
@@ -684,8 +496,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 8 Free Credits / 30 Days
-🔎 1 Search = 2 Credits
+🎁 12 Free Credits / 30 Days
+🔎 1 Search = 3 Credits
 
 Your free credits renew automatically every 30 days.
 
@@ -727,7 +539,7 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not is_member:
         keyboard = [
             [
-                InlineKeyboardButton("📢 Join Channel", url="https://t.me/InfinitelyInteresting"),
+                InlineKeyboardButton("📢 Join Channel", url="https://t.me/team420bd"),
                 InlineKeyboardButton("👥 Join Group", url="https://t.me/team_420_bd")
             ],
             [InlineKeyboardButton("✅ I've Joined", callback_data="verify_joined")]
@@ -754,8 +566,8 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 8 Free Credits / 30 Days
-🔎 1 Search = 2 Credits
+🎁 12 Free Credits / 30 Days
+🔎 1 Search = 3 Credits
 
 Your free credits renew automatically every 30 days.
 
@@ -800,40 +612,6 @@ Just send the phone number WITHOUT country code.
 **Status:** 🟢 Online
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', reply_markup=get_keyboard())
-
-async def buy_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await notify_owner(context, update.effective_user, "Buy Credits")
-
-    user_id = update.effective_user.id
-    is_member, _ = await check_membership(user_id, context)
-    if not is_member:
-        await update.message.reply_text(
-            "❌ **Access Denied!**\n\n"
-            "You must join both the channel and group to use this bot:\n"
-            f"📢 Channel: {REQUIRED_CHANNEL}\n"
-            f"👥 Group: {REQUIRED_GROUP}\n\n"
-            "Please join and try again.",
-            parse_mode='Markdown',
-            reply_markup=get_join_buttons()
-        )
-        return
-    if is_user_banned(user_id):
-        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
-        return
-
-    pricing = """
-💰 **Buy Credits**
-
-50 Credits = 50 tk (30 days)
-100 Credits = 100 tk (30 days)
-Unlimited Credit = 350 tk (30 days)
-"""
-    keyboard = [[InlineKeyboardButton("💳 Buy Credits", url="https://t.me/team420_contact_admin_bot")]]
-    await update.message.reply_text(
-        pricing,
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 async def refer_friends(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -959,7 +737,7 @@ async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=get_keyboard()
     )
 
-# ============ UPDATED handle_message ============
+# ============ handle_message ============
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -986,12 +764,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_input = update.message.text.strip()
 
+    # ---- RATE LIMIT CHECK (2 hours) ----
+    if not (OWNER_ID and user_id == OWNER_ID):
+        user = get_user_data(user_id)
+        last_search = user.get("last_search_time", 0)
+        now = time.time()
+        if now - last_search < 7200:  # 2 hours
+            remaining = 7200 - (now - last_search)
+            minutes = int(remaining // 60)
+            seconds = int(remaining % 60)
+            await update.message.reply_text(
+                f"⏳ **Rate Limit Exceeded!**\n\n"
+                f"You can only search **once every 2 hours**.\n"
+                f"Please wait **{minutes} minutes and {seconds} seconds** before trying again.",
+                parse_mode='Markdown',
+                reply_markup=get_keyboard()
+            )
+            return
+
     if not (OWNER_ID and user_id == OWNER_ID):
         credits = get_credits(user_id)
         if credits <= 0:
             await update.message.reply_text(
                 "❌ **Insufficient Credits!**\n\n"
-                "You have 0 credits. Please use **Buy Credits** or **Refer Friends** to get more.\n"
+                "You have 0 credits. Please use **Refer Friends** to get more.\n"
                 "You'll also receive free credits every 30 days.",
                 parse_mode='Markdown',
                 reply_markup=get_keyboard()
@@ -1011,94 +807,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not deduct_credit(user_id):
         await update.message.reply_text(
             "❌ **Insufficient Credits!**\n\n"
-            "You have 0 credits. Please use **Buy Credits** or **Refer Friends** to get more.",
+            "You have 0 credits. Please use **Refer Friends** to get more.",
             parse_mode='Markdown',
             reply_markup=get_keyboard()
         )
         return
 
+    # Update last search time (after deduction, so rate limit is applied)
+    user_data = get_user_data(user_id)
+    user_data["last_search_time"] = time.time()
+    update_user_data(user_id, user_data)
+
     processing_msg = await update.message.reply_text("🔍 **Processing...**", parse_mode='Markdown')
     try:
-        # --- Get Unitech & Truecaller data ---
         access_token = generate_access_token()
         if not access_token:
             await processing_msg.edit_text("❌ **Error:** Authentication failed.")
             return
 
         unitech_data = unitech_lookup(user_input, access_token)
-        truecaller_data = None
-        if user_input.startswith('1'):
-            truecaller_data = truecaller_search(user_input)
 
-        # --- Get Lynxio data (WhatsApp + Telegram) ---
-        lynxio_data = lynxio_lookup(user_input)
-
-        # Collect all image URLs (Unitech + WhatsApp + Telegram)
-        all_image_urls = []
-        # Unitech image
-        if unitech_data and unitech_data.get('status') == True:
-            data = unitech_data.get('data', {})
-            img_url = data.get('image')
-            if not img_url:
-                images = data.get('images', [])
-                if images:
-                    img_url = images[0]
-            if img_url:
-                all_image_urls.append(img_url)
-        # WhatsApp and Telegram images from Lynxio
-        if lynxio_data:
-            all_image_urls.extend(lynxio_data.get('whatsapp_images', []))
-            all_image_urls.extend(lynxio_data.get('telegram_images', []))
-
-        # Build result text (pass lynxio_data to format_result)
-        result_text = format_result(user_input, unitech_data, truecaller_data, lynxio_data)
+        result_text = format_result(user_input, unitech_data)
 
         await processing_msg.delete()
-
-        # --- Send result as photo album (if images) or plain text ---
-        if all_image_urls:
-            # Download each image to temp files
-            temp_files = []
-            successful_downloads = []
-            for url in all_image_urls:
-                try:
-                    response = requests.get(url, timeout=15)
-                    if response.status_code == 200:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
-                            tmp.write(response.content)
-                            temp_files.append(tmp.name)
-                            successful_downloads.append(tmp.name)
-                except Exception as e:
-                    logger.error(f"Failed to download image {url}: {e}")
-
-            if successful_downloads:
-                # Send as media group (album)
-                media_group = []
-                for i, file_path in enumerate(successful_downloads):
-                    with open(file_path, 'rb') as photo:
-                        if i == 0:
-                            # First photo gets the caption
-                            media_group.append(InputMediaPhoto(media=photo, caption=result_text, parse_mode='Markdown'))
-                        else:
-                            media_group.append(InputMediaPhoto(media=photo))
-                await update.message.reply_media_group(media=media_group)
-                # Delete all temp files
-                for file_path in successful_downloads:
-                    try:
-                        os.remove(file_path)
-                    except:
-                        pass
-            else:
-                # If no images downloaded successfully, send text
-                await update.message.reply_text(result_text, parse_mode='Markdown')
-        else:
-            # No images at all – send plain text
-            await update.message.reply_text(result_text, parse_mode='Markdown')
+        await update.message.reply_text(result_text, parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Error: {e}")
         await processing_msg.edit_text("❌ **Error:** Something went wrong.")
-# ======================================================================================
 
 # ============ ADMIN COMMAND ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1315,7 +1051,7 @@ def main():
     print("🤖 Bot starting...")
     print(f"📌 Bot Token: {'✅ Set' if BOT_TOKEN else '❌ Not Set'}")
     if OWNER_ID:
-        print(f"👤 Owner ID: {OWNER_ID} (exempt from credit deduction)")
+        print(f"👤 Owner ID: {OWNER_ID} (exempt from credit deduction & rate limit)")
     else:
         print("ℹ️ No owner set – all users consume credits.")
 
@@ -1337,7 +1073,6 @@ def main():
     ))
 
     application.add_handler(MessageHandler(filters.Regex('^🔍 Search Number$'), search_button_handler))
-    application.add_handler(MessageHandler(filters.Regex('^💰 Buy Credits$'), buy_credits))
     application.add_handler(MessageHandler(filters.Regex('^👥 Refer Friends$'), refer_friends))
     application.add_handler(MessageHandler(filters.Regex('^📊 My Credits$'), my_credits))
     application.add_handler(MessageHandler(filters.Regex('^📞 Contact Admin$'), contact_admin))
