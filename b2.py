@@ -219,7 +219,7 @@ def ensure_user_exists(user_id, first_name=None, username=None):
             "username": username,
             "joined": time.time(),
             "admin_credits_expiry": None,
-            "last_search_time": 0   # <-- added
+            "last_search_time": 0
         }
         save_user_data(data)
     else:
@@ -248,11 +248,10 @@ def get_user_data(user_id):
             "username": None,
             "joined": time.time(),
             "admin_credits_expiry": None,
-            "last_search_time": 0   # <-- added
+            "last_search_time": 0
         }
         save_user_data(data)
     else:
-        # Ensure field exists for old users
         if "last_search_time" not in data[user_id_str]:
             data[user_id_str]["last_search_time"] = 0
             save_user_data(data)
@@ -764,18 +763,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_input = update.message.text.strip()
 
-    # ---- RATE LIMIT CHECK (1 hours) ----
+    # ---- RATE LIMIT CHECK (1 hour) ----
     if not (OWNER_ID and user_id == OWNER_ID):
         user = get_user_data(user_id)
         last_search = user.get("last_search_time", 0)
         now = time.time()
-        if now - last_search < 3600:  # 1 hours
-            remaining = 3600 - (now - last_search)
+        limit_seconds = 3600  # 1 hour
+        if now - last_search < limit_seconds:
+            remaining = limit_seconds - (now - last_search)
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
+            hours = limit_seconds // 3600
+            time_unit = "hour" if hours == 1 else "hours"
             await update.message.reply_text(
                 f"⏳ **Rate Limit Exceeded!**\n\n"
-                f"You can only search **once every 1 hours**.\n"
+                f"You can only search **once every {hours} {time_unit}**.\n"
                 f"Please wait **{minutes} minutes and {seconds} seconds** before trying again.",
                 parse_mode='Markdown',
                 reply_markup=get_keyboard()
