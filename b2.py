@@ -40,7 +40,7 @@ REQUIRED_GROUP = "@team_420_bd"
 
 USER_DATA_FILE = "user_data.json"
 FREE_CREDITS_PERIOD = 30
-FREE_CREDITS_AMOUNT = 12
+FREE_CREDITS_AMOUNT = 20
 REFERRAL_REWARD = 2
 
 # ============ OWNER NOTIFICATION ============
@@ -306,11 +306,11 @@ def deduct_credit(user_id):
     user = ensure_monthly_credits(user_id)
     total = get_credits(user_id)
 
-    if total < 3:
+    if total < 2:
         return False
 
     free = user.get("credits", 0)
-    need = 3
+    need = 2
 
     if free > 0:
         take = min(free, need)
@@ -496,8 +496,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 12 Free Credits / 30 Days
-🔎 1 Search = 3 Credits
+🎁 20 Free Credits / 30 Days
+🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
 
@@ -566,8 +566,8 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 12 Free Credits / 30 Days
-🔎 1 Search = 3 Credits
+🎁 20 Free Credits / 30 Days
+🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
 
@@ -764,18 +764,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_input = update.message.text.strip()
 
-    # ---- RATE LIMIT CHECK (2 hours) ----
+    # ---- RATE LIMIT CHECK (1 hours) ----
     if not (OWNER_ID and user_id == OWNER_ID):
         user = get_user_data(user_id)
         last_search = user.get("last_search_time", 0)
         now = time.time()
-        if now - last_search < 7200:  # 2 hours
-            remaining = 7200 - (now - last_search)
+        if now - last_search < 3600:  # 1 hours
+            remaining = 3600 - (now - last_search)
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
             await update.message.reply_text(
                 f"⏳ **Rate Limit Exceeded!**\n\n"
-                f"You can only search **once every 2 hours**.\n"
+                f"You can only search **once every 1 hours**.\n"
                 f"Please wait **{minutes} minutes and {seconds} seconds** before trying again.",
                 parse_mode='Markdown',
                 reply_markup=get_keyboard()
