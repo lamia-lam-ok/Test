@@ -1,5 +1,3 @@
-# b2.py
-
 import warnings
 warnings.filterwarnings("ignore", category=Warning)
 
@@ -144,7 +142,7 @@ def unitech_lookup(number, access_token):
         logger.error(f"Unitech API error: {e}")
         return None
 
-# ============ FORMAT RESULT (UPDATED) ============
+# ============ FORMAT RESULT ============
 def format_result(number, unitech_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
@@ -746,14 +744,18 @@ async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=get_keyboard()
     )
 
-# ============ handle_message ============
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ============ NUMBER SEARCH HANDLER (NEW - PRIORITY) ============
+async def handle_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dedicated handler for numbers starting with 1 (10 digits)."""
     user_id = update.effective_user.id
+    user_input = update.message.text.strip()
 
-    if user_id == OWNER_ID and context.user_data.get("admin_action"):
-        await handle_admin_input(update, context)
-        return
+    # Clear any admin action so we don't get stuck
+    context.user_data.pop("admin_action", None)
 
+    logger.info(f"Number received from {user_id}: {user_input}")
+
+    # ---- Membership and ban checks ----
     is_member, missing = await check_membership(user_id, context)
     if not is_member:
         await update.message.reply_text(
@@ -771,9 +773,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
         return
 
-    user_input = update.message.text.strip()
-
-    # ---- RATE LIMIT CHECK (1 hour) ----
+    # ---- Rate limit ----
     if not (OWNER_ID and user_id == OWNER_ID):
         user = get_user_data(user_id)
         last_search = user.get("last_search_time", 0)
@@ -783,17 +783,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = limit_seconds - (now - last_search)
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
-            hours = limit_seconds // 3600
-            time_unit = "hour" if hours == 1 else "hours"
             await update.message.reply_text(
                 f"⏳ **Rate Limit Exceeded!**\n\n"
-                f"You can only search **once every {hours} {time_unit}**.\n"
+                f"You can only search **once every 1 hour**.\n"
                 f"Please wait **{minutes} minutes and {seconds} seconds** before trying again.",
                 parse_mode='Markdown',
                 reply_markup=get_keyboard()
             )
             return
 
+    # ---- Credits ----
     if not (OWNER_ID and user_id == OWNER_ID):
         credits = get_credits(user_id)
         if credits <= 0:
@@ -806,16 +805,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    if not re.match(r'^1[0-9]{9}$', user_input):
-        await update.message.reply_text(
-            "❌ **Invalid format!**\n\nSend: `1712345678`\nDon't include: +880 or 0",
-            parse_mode='Markdown',
-            reply_markup=get_keyboard()
-        )
-        return
-
-    await notify_owner(context, update.effective_user, "Number Lookup Request", extra=f"Phone: +880{user_input}")
-
+    # ---- Deduct credits ----
     if not deduct_credit(user_id):
         await update.message.reply_text(
             "❌ **Insufficient Credits!**\n\n"
@@ -825,11 +815,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Update last search time (after deduction, so rate limit is applied)
+    # Update last search time
     user_data = get_user_data(user_id)
     user_data["last_search_time"] = time.time()
     update_user_data(user_id, user_data)
 
+    # ---- Process ----
     processing_msg = await update.message.reply_text("🔍 **Processing...**", parse_mode='Markdown')
     try:
         access_token = generate_access_token()
@@ -838,15 +829,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         unitech_data = unitech_lookup(user_input, access_token)
-
         result_text = format_result(user_input, unitech_data)
 
         await processing_msg.delete()
         await update.message.reply_text(result_text, parse_mode='Markdown')
 
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await processing_msg.edit_text("❌ **Error:** Something went wrong.")
+        logger.error(f"Error processing number: {e}")
+        await processing_msg.edit_text("❌ **Error:** Something went wrong. Please try again later.")
+
+# ============ GENERAL TEXT HANDLER ============
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fallback for any other text (non-number)."""
+    # This will catch texts that are not numbers, buttons, or commands.
+    # We just ignore or reply with a helpful message.
+    await update.message.reply_text(
+        "I didn't understand that. Please use the buttons or send a valid phone number starting with '1' (e.g., `1712345678`).",
+        parse_mode='Markdown',
+        reply_markup=get_keyboard()
+    )
 
 # ============ ADMIN COMMAND ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1079,15 +1080,25 @@ def main():
 
     application.add_handler(CallbackQueryHandler(verify_joined_callback, pattern="^verify_joined$"))
 
+    # Admin buttons
     application.add_handler(MessageHandler(
         filters.Regex('^(👥 User List|🚫 Ban User|✅ Unban User|➕ Add Credits|🔧 Set Credits|🔍 Check Credits|📢 Broadcast|❌ Close Panel)$'),
         handle_admin_buttons
     ))
 
+    # Number handler – catches numbers starting with 1 and 10 digits
+    application.add_handler(MessageHandler(
+        filters.Regex(r'^1\d{9}$'),
+        handle_number_input
+    ))
+
+    # Button handlers (exact matches)
     application.add_handler(MessageHandler(filters.Regex('^🔍 Search Number$'), search_button_handler))
     application.add_handler(MessageHandler(filters.Regex('^👥 Refer Friends$'), refer_friends))
     application.add_handler(MessageHandler(filters.Regex('^📊 My Credits$'), my_credits))
     application.add_handler(MessageHandler(filters.Regex('^📞 Contact Admin$'), contact_admin))
+
+    # Catch-all for any other text
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("✅ Bot is running! Press Ctrl+C to stop.")
