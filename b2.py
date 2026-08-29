@@ -170,17 +170,7 @@ def format_result(number, unitech_data):
     
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    result.append("""
-🤖 **Bot Says:** To find more names, multiple photos, and Social IDs without rate limit, use our paid bot.
-
-💰 **Our Paid Bot Price List** 💰
-
-40 Credits = 50 Tk (30 days)
-100 Credits = 100 Tk (30 days)
-200 Credits = 170 Tk (30 days)
-
-📩 **Admin Contact:** @team420_contact_admin_bot
-""")
+    result.append("🤖 **Bot Says:** Enjoy")
     
     return "\n".join(result)
 
@@ -841,13 +831,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = format_result(user_input, unitech_data)
 
-        # Edit the processing message with the result (instead of deleting and sending new)
-        await processing_msg.edit_text(result_text, parse_mode='Markdown')
+        await processing_msg.delete()
+        await update.message.reply_text(result_text, parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        # The processing message still exists, so we can edit it to show the error
-        await processing_msg.edit_text("❌ **Error:** Something went wrong. Please try again later.")
+        await processing_msg.edit_text("❌ **Error:** Something went wrong.")
 
 # ============ ADMIN COMMAND ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
