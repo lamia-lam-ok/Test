@@ -40,7 +40,7 @@ REQUIRED_GROUP = "@team_420_bd"
 
 USER_DATA_FILE = "user_data.json"
 FREE_CREDITS_PERIOD = 30
-FREE_CREDITS_AMOUNT = 20
+FREE_CREDITS_AMOUNT = 12
 REFERRAL_REWARD = 2
 
 # ============ OWNER NOTIFICATION ============
@@ -142,7 +142,7 @@ def unitech_lookup(number, access_token):
         logger.error(f"Unitech API error: {e}")
         return None
 
-# ============ FORMAT RESULT (ONLY NAMES FROM UNITECH) ============
+# ============ FORMAT RESULT (UPDATED) ============
 def format_result(number, unitech_data):
     result = []
     result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
@@ -170,7 +170,15 @@ def format_result(number, unitech_data):
     
     result.append("\n" + "=" * 50)
     result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    result.append("🤖 **Bot Says:** Enjoy")
+    result.append("🤖 **Bot Says:** To find more names, multiple photos and Social IDs without rate limit use our paid bot.")
+    result.append("")
+    result.append("💰 **Paid Bot Credits Price List** 💰")
+    result.append("")
+    result.append("40 Credits = 50 tk (30 days)")
+    result.append("100 Credits = 100 tk (30 days)")
+    result.append("200 Credit = 170 tk (30 days)")
+    result.append("")
+    result.append("Admin Contact: @team420_contact_admin_bot")
     
     return "\n".join(result)
 
@@ -495,7 +503,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 20 Free Credits / 30 Days
+🎁 12 Free Credits / 30 Days
 🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
@@ -565,7 +573,7 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 20 Free Credits / 30 Days
+🎁 12 Free Credits / 30 Days
 🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
@@ -1084,3 +1092,4 @@ def main():
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
+    main()
