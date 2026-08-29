@@ -841,12 +841,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = format_result(user_input, unitech_data)
 
-        await processing_msg.delete()
-        await update.message.reply_text(result_text, parse_mode='Markdown')
+        # Edit the processing message with the result (instead of deleting and sending new)
+        await processing_msg.edit_text(result_text, parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        await processing_msg.edit_text("❌ **Error:** Something went wrong.")
+        # The processing message still exists, so we can edit it to show the error
+        await processing_msg.edit_text("❌ **Error:** Something went wrong. Please try again later.")
 
 # ============ ADMIN COMMAND ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
