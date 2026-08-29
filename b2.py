@@ -847,7 +847,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = format_result(user_input, unitech_data)
 
         await processing_msg.delete()
-        await update.message.reply_text(result_text, parse_mode='Markdown')
+        # === FIX: removed Markdown parsing to avoid underscore error ===
+        await update.message.reply_text(result_text, parse_mode=None)
 
     except Exception as e:
         logger.error(f"Error: {e}")
