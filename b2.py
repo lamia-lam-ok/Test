@@ -142,36 +142,51 @@ def unitech_lookup(number, access_token):
         logger.error(f"Unitech API error: {e}")
         return None
 
-# ============ FORMAT RESULT (ONLY NAMES FROM UNITECH) ============
+# ============ FORMAT RESULT (UPDATED) ============
 def format_result(number, unitech_data):
     result = []
-    result.append("🔍 **PHONE NUMBER LOOKUP RESULTS**")
-    result.append(f"📱 **Number:** +880{number}")
+    result.append("🔍 PHONE NUMBER LOOKUP RESULTS")
+    result.append(f"📱 Number: +880{number}")
     result.append("=" * 50)
-    
-    result.append("\n📋 **DAILY USAGES NAME:**")
+    result.append("")   # blank line
+
+    result.append("📋 DAILY USAGES NAME:")
     if unitech_data and unitech_data.get('status') == True:
         data = unitech_data.get('data', {})
         full_name = data.get('fullName')
-        if full_name:
-            result.append(f"✅ **Name 1:** {full_name}")
-        else:
-            result.append("❌ **Name 1:** Not Found")
-        
         other_names = data.get('otherNames', [])
-        if other_names:
-            for idx, item in enumerate(other_names, start=2):
-                name = item.get('name', '[Unnamed]')
-                result.append(f"✅ **Name {idx}:** {name}")
+
+        # Build a flat list of all names (fullName first, then otherNames)
+        name_list = []
+        if full_name:
+            name_list.append(full_name)
+        for item in other_names:
+            name = item.get('name', '[Unnamed]')
+            if name:
+                name_list.append(name)
+
+        if name_list:
+            for idx, name in enumerate(name_list, start=1):
+                result.append(f"✅ Name {idx}: {name}")
         else:
-            result.append("❌ **Other Names:** Not Found")
+            result.append("❌ Name 1: Not Found")
+            result.append("❌ Other Names: Not Found")
     else:
-        result.append("❌ **Information unavailable**")
-    
-    result.append("\n" + "=" * 50)
-    result.append(f"⏰ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    result.append("🤖 **Bot Says:** Enjoy")
-    
+        result.append("❌ Information unavailable")
+
+    result.append("")   # blank line before separator
+    result.append("=" * 50)
+    result.append(f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    result.append("🤖 Bot Says: To find more names, multiple photos, and Social IDs without rate limit use our paid bot.")
+    result.append("")
+    result.append("💰 Our Paid Bot Price List 💰 ")
+    result.append("")
+    result.append("40 Credits = 50 tk (30 days)")
+    result.append("100 Credits = 100 tk (30 days)")
+    result.append("200 Credit = 170 tk (30 days)")
+    result.append("")
+    result.append("Admin Contact: @team420_contact_admin_bot")
+
     return "\n".join(result)
 
 # ============ MEMBERSHIP CHECK ============
