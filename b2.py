@@ -510,7 +510,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 12 Free Credits / 30 Days
+🎁 8 Free Credits / 30 Days
 🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
@@ -580,7 +580,7 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 Hi {user.first_name}! Search a number to get its information.
 
-🎁 12 Free Credits / 30 Days
+🎁 8 Free Credits / 30 Days
 🔎 1 Search = 2 Credits
 
 Your free credits renew automatically every 30 days.
