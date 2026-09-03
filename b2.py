@@ -12,6 +12,7 @@ from datetime import datetime
 import time
 import asyncio
 import random
+import string
 
 # ============ CONFIGURATION ============
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -31,17 +32,198 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============ CONSTANTS ============
-REFRESH_TOKEN = "AMf-vBx2NF07mspl6qH2dBUBNE0DWkwyrjMvqElbwXoq8fA07xd4oaTPho8OWo_wwCmACHqgWn7ZMKYOqiTV4_UX4P5xNT78c_uR-DHa1aqPw1zznx5LgZ03dA3biu9u9IEsvprr6mzDcSAvH7A9-bdIkVG_O2EeV92e2oswF-WniYoKDmRKUGfJ-PNOnWD0Ttg7jGsKk9XLbNQFsLpp4iQ6uGIgZ3OIhA"
-TOKEN_URL = "https://securetoken.googleapis.com/v1/token?key=AIzaSyAtRVK71cLulaRpQCQ3C8YAB-jV5lQ-0kQ"
-UNITECH_URL = "https://lookup.unitechapps.in/"
-
 REQUIRED_CHANNEL = "@team420bd"
 REQUIRED_GROUP = "@team_420_bd"
 
 USER_DATA_FILE = "user_data.json"
 FREE_CREDITS_PERIOD = 30
 FREE_CREDITS_AMOUNT = 8
-REFERRAL_REWARD = 2
+REFERRAL_REWARD = 1
+PRANK_COST = 2
+PRANK_RATE_LIMIT = 3600  # 1 hour
+
+# ============ JOKESPHONE CALLER ============
+VOICE_OPTIONS = [
+    {"dial": "8810", "titulo": "আপনি আমার গার্লফ্রেন্ডকে কল করেন কেন?"},
+    {"dial": "8805", "titulo": "গাজার মতো দুর্গন্ধ!"},
+    {"dial": "8808", "titulo": "আপনি আমার ওয়াই-ফাই চুরি করছেন!"},
+    {"dial": "8809", "titulo": "আপনি কেন আমাকে কল করেন?"},
+    {"dial": "8803", "titulo": "পিজ্জা ডেলিভারি"},
+    {"dial": "8804", "titulo": "আপনার ট্যাক্সি আপনার জন্য অপেক্ষা করছে"},
+    {"dial": "8806", "titulo": "আপনার কামরার হৈচৈ আওয়াজ"},
+    {"dial": "8807", "titulo": "আপনার কুকুরটি খুবই ক্লান্তিকর!"}
+]
+
+BRANDS = {
+    "samsung": {
+        "models": ["SM-M366B", "SM-G998B", "SM-A526B", "SM-N986B", "SM-S918B", "SM-S911B", "SM-A546B", "SM-A336B", "SM-F946B", "SM-X906B", "SM-G781B", "SM-A715F"],
+        "builds": ["AP3A", "RP1A", "QP1A", "TP1A", "UP1A"]
+    },
+    "xiaomi": {
+        "models": ["M2011K2G", "M2102J20SG", "M2007J3SG", "2201116PG", "2107119SG", "2109119DG", "M2101K7AG", "M2006J10C", "M2102J2SG"],
+        "builds": ["RKQ1", "QKQ1", "PKQ1", "SKQ1", "TKQ1"]
+    },
+    "oneplus": {
+        "models": ["LE2113", "LE2123", "IN2013", "LE2115", "LE2125", "IN2023", "NE2213", "NE2215", "DN2103"],
+        "builds": ["QKQ1", "RQ1A", "SP1A", "TP1A"]
+    },
+    "google": {
+        "models": ["Pixel 6", "Pixel 7", "Pixel 8", "Pixel 4", "Pixel 5", "Pixel 6a", "Pixel 7a", "Pixel 8a", "Pixel 9"],
+        "builds": ["TQ3A", "UP1A", "SP1A", "RP1A", "SQ3A"]
+    },
+    "huawei": {
+        "models": ["ANA-LX1", "VOG-L29", "ELE-L29", "LIO-L29", "MAR-LX1A", "JNY-LX1", "CLT-L29", "LYA-L29", "MHA-L29"],
+        "builds": ["HUAWEI", "EMUI", "HarmonyOS"]
+    },
+    "oppo": {
+        "models": ["CPH2205", "CPH2305", "CPH2359", "CPH2451", "CPH2477", "CPH2491", "CPH2505", "CPH2537"],
+        "builds": ["QKQ1", "RKQ1", "SKQ1", "TP1A"]
+    },
+    "vivo": {
+        "models": ["V2045", "V2108", "V2115", "V2124", "V2134", "V2144", "V2157", "V2162", "V2171"],
+        "builds": ["QKQ1", "RP1A", "SP1A", "TP1A"]
+    },
+    "motorola": {
+        "models": ["XT2215-2", "XT2241-1", "XT2251-1", "XT2261-1", "XT2271-1", "XT2315-1", "XT2321-1", "XT2331-1"],
+        "builds": ["S3ST32", "S3SS32", "S3ZS32", "T1TS32"]
+    },
+    "realme": {
+        "models": ["RMX3370", "RMX3393", "RMX3478", "RMX3491", "RMX3501", "RMX3576", "RMX3615", "RMX3622"],
+        "builds": ["QKQ1", "RKQ1", "SKQ1", "TP1A"]
+    },
+    "sony": {
+        "models": ["XQ-AT51", "XQ-BC52", "XQ-BT52", "XQ-CT52", "XQ-DQ72", "XQ-DS72"],
+        "builds": ["55.2.A", "58.0.A", "59.0.A", "62.0.A"]
+    },
+    "nokia": {
+        "models": ["TA-1334", "TA-1346", "TA-1387", "TA-1395", "TA-1403", "TA-1417"],
+        "builds": ["00WW", "0WW", "1WW", "2WW"]
+    },
+    "lg": {
+        "models": ["LM-G900", "LM-V600", "LM-Q730", "LM-K520", "LM-X420", "LM-G850"],
+        "builds": ["QKQ1", "PKQ1", "RKQ1", "SP1A"]
+    },
+    "asus": {
+        "models": ["ZS671KS", "ZS672KS", "ZS673KS", "ZS630KL", "ZS620KL", "ZS660KL"],
+        "builds": ["QKQ1", "RP1A", "SP1A", "TP1A"]
+    }
+}
+
+ANDROID_VERSIONS = ["10", "11", "12", "13", "14", "15"]
+
+def generate_random_id(length=16):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+def get_current_timestamp():
+    return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+def send_prank_call(dst_number, voice):
+    """
+    Execute the JokesPhone prank call.
+    Returns True if successful (res=="OK"), False otherwise.
+    """
+    dial = voice["dial"]
+    titulo = voice["titulo"]
+
+    base_id = generate_random_id()
+    brand = random.choice(list(BRANDS.keys()))
+    version = random.choice(ANDROID_VERSIONS)
+    model = random.choice(BRANDS[brand]["models"])
+    build_base = random.choice(BRANDS[brand]["builds"])
+    build_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    build = f"{build_base}.{build_suffix}"
+    user_agent = f"Dalvik/2.1.0 (Linux; U; Android {version}; {model} Build/{build})"
+    did = f"{base_id}@jokesphone"
+
+    common_headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "User-Agent": user_agent,
+        "Host": "master.appha.es",
+        "Connection": "Keep-Alive",
+        "Accept-Encoding": "gzip"
+    }
+
+    # Register
+    register_payload = {
+        "uv": "jokesphone",
+        "dtype": "adr",
+        "did": did,
+        "route": "jo_1",
+        "timezone": "Asia/Dhaka",
+        "tags": {
+            "mf": brand,
+            "mcc": 470,
+            "mnc": 4,
+            "r": version,
+            "v": "4.0.030826.346",
+            "l": "en_US",
+            "c": "US",
+            "lnf": "en",
+            "platform": "gplay",
+            "aid": base_id,
+            "class": "Jokesphone_o"
+        },
+        "root": True,
+        "imeiex": False,
+        "version": "4.0.030826.346",
+        "version_num": 346,
+        "recommender": ""
+    }
+    try:
+        requests.post(
+            "https://master.appha.es/lua/jokesphone/user/create.lua",
+            headers=common_headers,
+            json=register_payload,
+            timeout=10
+        )
+    except Exception:
+        return False
+
+    # Check credit
+    credit_payload = {"did": did}
+    try:
+        credit_resp = requests.post(
+            "https://master.appha.es/lua/jokesphone/user/getCredit.lua",
+            headers=common_headers,
+            json=credit_payload,
+            timeout=10
+        )
+        credit_data = credit_resp.json()
+        credit = credit_data.get("credit", 0)
+    except Exception:
+        return False
+
+    # Create task
+    current_time = get_current_timestamp()
+    task_id = generate_random_id(20)
+    task_payload = {
+        "real_f": current_time,
+        "f": current_time,
+        "uid": did,
+        "dst": dst_number,
+        "dial": dial,
+        "titulo": titulo,
+        "credit": credit,
+        "smscredit": 0,
+        "tz": "Asia/Dhaka",
+        "c": "bd",
+        "sc": "bd",
+        "rec": True,
+        "landline": False,
+        "odid": did,
+        "_id": task_id
+    }
+    try:
+        task_resp = requests.post(
+            "https://master.appha.es/lua/jokesphone/user/create_task.lua",
+            headers=common_headers,
+            json=task_payload,
+            timeout=10
+        )
+        result = task_resp.json()
+        return result.get("res") == "OK"
+    except Exception:
+        return False
 
 # ============ OWNER NOTIFICATION ============
 async def notify_owner(context, user, activity, extra=None):
@@ -64,130 +246,6 @@ async def notify_owner(context, user, activity, extra=None):
         await context.bot.send_message(chat_id=OWNER_ID, text=msg, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Failed to notify owner: {e}")
-
-# ============ TOKEN GENERATION ============
-def _generate_random_headers():
-    """Generate a random User-Agent, keep all other headers static."""
-    base_headers = {
-        "Content-Type": "application/json",
-        "X-Android-Package": "com.uni.tech.numberlookup",
-        "X-Android-Cert": "61ED377E85D386A8DFEE6B864BD85B0BFAA5AF81",
-        "Accept-Language": "en-US",
-        "X-Client-Version": "Android/Fallback/X24001000/FirebaseCore-Android",
-        "X-Firebase-GMPID": "1:1067701877947:android:8c30e3edca32c5cd383d9e",
-        "X-Firebase-Client": "H4sIAAAAAAAA_6tWykhNLCpJSk0sKVayio7VUSpLLSrOzM9TslIyUqoFAFyivEQfAAAA",
-        "X-Firebase-AppCheck": "eyJlcnJvciI6IlVOS05PV05fRVJST1IifQ==",
-        "Host": "securetoken.googleapis.com",
-        "Connection": "Keep-Alive",
-        "Accept-Encoding": "gzip"
-    }
-    
-    device_models = [
-        "SM-S921B", "SM-S928B", "SM-A556B", "SM-M546B", "SM-G991B",
-        "SM-N986B", "SM-F956B", "SM-F731B", "SM-A356B",
-        "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
-        "Pixel-8-Pro", "Pixel-7-Pro", "Pixel-6", "Pixel-9-Pro",
-        "M2011K2G", "M2101K9G", "2211133G", "23013PC75G",
-        "OnePlus-12", "OnePlus-11", "OnePlus-10-Pro",
-        "CPH2609", "CPH2451", "Find-X7-Pro", "Find-X5-Pro",
-        "V2230", "V2244", "X90-Pro", "X100-Pro",
-        "RMX3370", "RMX3841", "GT-Neo-5", "Realme-11-Pro",
-        "XT2301-1", "Moto-G84", "Edge-40-Pro", "Edge-50-Ultra",
-        "LYA-L09", "ELE-L29", "NOH-NX9", "P40-Pro",
-        "Nothing-Phone-2", "Nothing-Phone-1",
-        "XQ-DQ72", "Xperia-1-V", "Xperia-5-IV",
-        "LG-V600", "LM-G900"
-    ]
-    android_versions = ["10", "11", "12", "13", "14", "15"]
-    model = random.choice(device_models)
-    version = random.choice(android_versions)
-    build = "AP3A.240905.015.A2"
-    user_agent = f"Dalvik/2.1.0 (Linux; U; Android {version}; {model} Build/{build})"
-    
-    headers = base_headers.copy()
-    headers["User-Agent"] = user_agent
-    return headers
-
-def generate_access_token():
-    try:
-        headers = _generate_random_headers()
-        data = {"grantType": "refresh_token", "refreshToken": REFRESH_TOKEN}
-        response = requests.post(TOKEN_URL, headers=headers, json=data, timeout=10)
-        response.raise_for_status()
-        return response.json().get('access_token')
-    except Exception as e:
-        logger.error(f"Token generation failed: {e}")
-        return None
-
-# ============ UNITECH API ============
-def unitech_lookup(number, access_token):
-    try:
-        url = "https://lookup.unitechapps.in/"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json; charset=UTF-8",
-            "Host": "lookup.unitechapps.in",
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/4.12.0"
-        }
-        payload = {
-            "code": "880",
-            "number": number
-        }
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Unitech API error: {e}")
-        return None
-
-# ============ FORMAT RESULT (UPDATED) ============
-def format_result(number, unitech_data):
-    result = []
-    result.append("🔍 PHONE NUMBER LOOKUP RESULTS")
-    result.append(f"📱 Number: +880{number}")
-    result.append("=" * 50)
-    result.append("")   # blank line
-
-    result.append("📋 DAILY USAGES NAME:")
-    if unitech_data and unitech_data.get('status') == True:
-        data = unitech_data.get('data', {})
-        full_name = data.get('fullName')
-        other_names = data.get('otherNames', [])
-
-        # Build a flat list of all names (fullName first, then otherNames)
-        name_list = []
-        if full_name:
-            name_list.append(full_name)
-        for item in other_names:
-            name = item.get('name', '[Unnamed]')
-            if name:
-                name_list.append(name)
-
-        if name_list:
-            for idx, name in enumerate(name_list, start=1):
-                result.append(f"✅ Name {idx}: {name}")
-        else:
-            result.append("❌ Name 1: Not Found")
-            result.append("❌ Other Names: Not Found")
-    else:
-        result.append("❌ Information unavailable")
-
-    result.append("")   # blank line before separator
-    result.append("=" * 50)
-    result.append(f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    result.append("🤖 Bot Says: To find more names, multiple photos, and Social IDs without rate limit use our paid bot.")
-    result.append("")
-    result.append("💰 Our Paid Bot Price List 💰 ")
-    result.append("")
-    result.append("40 Credits = 50 tk (30 days)")
-    result.append("100 Credits = 100 tk (30 days)")
-    result.append("200 Credit = 170 tk (30 days)")
-    result.append("")
-    result.append("Admin Contact: @team420_contact_admin_bot")
-
-    return "\n".join(result)
 
 # ============ MEMBERSHIP CHECK ============
 async def check_membership(user_id, context):
@@ -234,7 +292,7 @@ def ensure_user_exists(user_id, first_name=None, username=None):
             "username": username,
             "joined": time.time(),
             "admin_credits_expiry": None,
-            "last_search_time": 0
+            "last_prank_time": 0,
         }
         save_user_data(data)
     else:
@@ -244,6 +302,9 @@ def ensure_user_exists(user_id, first_name=None, username=None):
             updated = True
         if username and data[user_id_str].get("username") != username:
             data[user_id_str]["username"] = username
+            updated = True
+        if "last_prank_time" not in data[user_id_str]:
+            data[user_id_str]["last_prank_time"] = 0
             updated = True
         if updated:
             save_user_data(data)
@@ -263,12 +324,12 @@ def get_user_data(user_id):
             "username": None,
             "joined": time.time(),
             "admin_credits_expiry": None,
-            "last_search_time": 0
+            "last_prank_time": 0,
         }
         save_user_data(data)
     else:
-        if "last_search_time" not in data[user_id_str]:
-            data[user_id_str]["last_search_time"] = 0
+        if "last_prank_time" not in data[user_id_str]:
+            data[user_id_str]["last_prank_time"] = 0
             save_user_data(data)
     return data[user_id_str]
 
@@ -305,6 +366,8 @@ def get_bonus_credits(user_id):
     return total
 
 def get_credits(user_id):
+    if OWNER_ID and user_id == OWNER_ID:
+        return float('inf')
     user = ensure_monthly_credits(user_id)
     free = user.get("credits", 0)
     bonus = get_bonus_credits(user_id)
@@ -313,18 +376,18 @@ def get_credits(user_id):
         return bonus
     return free + bonus
 
-def deduct_credit(user_id):
+def deduct_credit(user_id, amount=2):
     if OWNER_ID and user_id == OWNER_ID:
         return True
 
     user = ensure_monthly_credits(user_id)
     total = get_credits(user_id)
 
-    if total < 2:
+    if total < amount:
         return False
 
     free = user.get("credits", 0)
-    need = 2
+    need = amount
 
     if free > 0:
         take = min(free, need)
@@ -412,7 +475,7 @@ def get_all_users():
 # ============ KEYBOARDS ============
 def get_keyboard():
     buttons = [
-        [KeyboardButton("🔍 Search Number")],
+        [KeyboardButton("📞 Send Prank Call")],
         [
             KeyboardButton("👥 Refer Friends"),
             KeyboardButton("📊 My Credits")
@@ -464,7 +527,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try:
                             await context.bot.send_message(
                                 chat_id=referrer_id,
-                                text=f"🎉 **You earned +{REFERRAL_REWARD} credits!**\n"
+                                text=f"🎉 **You earned +{REFERRAL_REWARD} credit!**\n"
                                      f"A new user joined using your referral link.",
                                 parse_mode='Markdown'
                             )
@@ -506,18 +569,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     welcome_text = f"""
-👋 **Welcome to Number Lookup Bot!**
+👋 **Welcome to Prank Call Bot!**
 
-Hi {user.first_name}! Search a number to get its information.
+Hi {user.first_name}! Send a prank call to any number.
 
 🎁 8 Free Credits / 30 Days
-🔎 1 Search = 2 Credits
+📞 1 Prank Call = 2 Credits
 
 Your free credits renew automatically every 30 days.
+**Rate limit:** 1 call per hour.
 
 📌 **Commands:**
-/start — Restart the bot anytime
-/help — Number format guide
+/start — Restart the bot
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=get_keyboard())
 
@@ -576,18 +639,18 @@ async def verify_joined_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     user = update.effective_user
     welcome_text = f"""
-👋 **Welcome to Number Lookup Bot!**
+👋 **Welcome to Prank Call Bot!**
 
-Hi {user.first_name}! Search a number to get its information.
+Hi {user.first_name}! Send a prank call to any number.
 
 🎁 8 Free Credits / 30 Days
-🔎 1 Search = 2 Credits
+📞 1 Prank Call = 2 Credits
 
 Your free credits renew automatically every 30 days.
+**Rate limit:** 1 call per hour.
 
 📌 **Commands:**
-/start — Restart the bot anytime
-/help — Number format guide
+/start — Restart the bot
 """
     await query.message.reply_text(
         welcome_text,
@@ -595,41 +658,9 @@ Your free credits renew automatically every 30 days.
         reply_markup=get_keyboard()
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await notify_owner(context, update.effective_user, "Help Command")
-
-    user_id = update.effective_user.id
-    is_member, missing = await check_membership(user_id, context)
-    if not is_member:
-        await update.message.reply_text(
-            "❌ **Access Denied!**\n\n"
-            "You must join both the channel and group to use this bot:\n"
-            f"📢 Channel: {REQUIRED_CHANNEL}\n"
-            f"👥 Group: {REQUIRED_GROUP}\n\n"
-            "Please join and try again.",
-            parse_mode='Markdown',
-            reply_markup=get_join_buttons()
-        )
-        return
-
-    if is_user_banned(user_id):
-        await update.message.reply_text("🚫 **You are banned.**", parse_mode='Markdown')
-        return
-
-    help_text = """
-❓ **How to use:**
-Just send the phone number WITHOUT country code.
-
-✅ **Correct:** `1712345678`
-❌ **Wrong:** `+8801712345678`
-
-**Status:** 🟢 Online
-"""
-    await update.message.reply_text(help_text, parse_mode='Markdown', reply_markup=get_keyboard())
-
 async def refer_friends(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    bot_username = context.bot.username or "number2infolookup_bot"
+    bot_username = context.bot.username or "prankcall_bot"
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     await notify_owner(context, update.effective_user, "Refer Friends", extra=f"Link: {referral_link}")
 
@@ -656,7 +687,7 @@ Share your referral link with friends:
 
 `{referral_link}`
 
-When a friend joins using this link, you get **+{REFERRAL_REWARD} free credits**!
+When a friend joins using this link, you get **+{REFERRAL_REWARD} free credit**!
 
 👤 Your current credits: **{get_credits(user_id)}**
 """
@@ -697,6 +728,9 @@ Remaining Credits: **{credits}**
 
 📅 Next free credits: in **{days_left}** day(s)
 (You get {FREE_CREDITS_AMOUNT} free credits every {FREE_CREDITS_PERIOD} days)
+
+💡 **Usage cost:**
+📞 1 Prank call = 2 credits
 """
     await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=get_keyboard())
 
@@ -720,14 +754,19 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
         return
 
-    msg = "📞 **Contact Admin**\n\nIf you need help or have any issues, you can contact our admin via the bot below:\n\nClick the button to start a chat with the admin bot."
+    msg = "📞 **Contact Admin**\n\nIf you need help, contact our admin via the bot below."
     keyboard = [[InlineKeyboardButton("👤 Contact Admin", url="https://t.me/team420_contact_admin_bot")]]
     await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await notify_owner(context, update.effective_user, "Search Button Clicked")
-
+# ============ PRANK CALL HANDLERS ============
+async def prank_call_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    await notify_owner(context, update.effective_user, "Prank Call Button Clicked")
+
+    if is_user_banned(user_id):
+        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+        return
+
     is_member, _ = await check_membership(user_id, context)
     if not is_member:
         await update.message.reply_text(
@@ -740,121 +779,127 @@ async def search_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=get_join_buttons()
         )
         return
-    if is_user_banned(user_id):
-        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
+
+    msg = "🎤 **Choose a voice message:**\n\n"
+    for i, opt in enumerate(VOICE_OPTIONS, 1):
+        msg += f"{i}. {opt['titulo']}\n"
+    msg += "\nPlease reply with the **number** (1-8) of your choice."
+
+    context.user_data["state"] = "awaiting_voice"
+    await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=get_keyboard())
+
+async def handle_prank_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+
+    if not text.isdigit() or not (1 <= int(text) <= len(VOICE_OPTIONS)):
+        await update.message.reply_text(
+            "❌ Invalid choice. Please send a number between 1 and 8.",
+            parse_mode='Markdown'
+        )
         return
 
+    voice_index = int(text) - 1
+    selected = VOICE_OPTIONS[voice_index]
+    context.user_data["prank_voice"] = selected
+    context.user_data["state"] = "awaiting_prank_number"
+
     await update.message.reply_text(
-        "📱 Please send the phone number **without** country code.\n\n"
-        "Example: `1712345678`",
+        f"📱 Selected: *{selected['titulo']}*\n\n"
+        "Now send the **destination phone number** with country code:\n"
+        "Example: `+8801712345678`",
         parse_mode='Markdown',
         reply_markup=get_keyboard()
     )
 
-# ============ handle_message ============
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_prank_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    dst_raw = update.message.text.strip()
 
-    if user_id == OWNER_ID and context.user_data.get("admin_action"):
-        await handle_admin_input(update, context)
-        return
-
-    is_member, missing = await check_membership(user_id, context)
-    if not is_member:
+    # Validate format: must start with +880 and have 10 digits after that
+    # Also accept any number that starts with +880 and has at least 13 characters (basic check)
+    if not re.match(r'^\+8801[0-9]{9}$', dst_raw):
         await update.message.reply_text(
-            "❌ **Access Denied!**\n\n"
-            "You must join both the channel and group to use this bot:\n"
-            f"📢 Channel: {REQUIRED_CHANNEL}\n"
-            f"👥 Group: {REQUIRED_GROUP}\n\n"
-            "Please join and try again.",
+            "❌ **Invalid format!**\n"
+            "Send the number with country code: `+8801712345678`\n"
+            "Must start with +880 and have 10 digits after that.",
             parse_mode='Markdown',
-            reply_markup=get_join_buttons()
+            reply_markup=get_keyboard()
         )
         return
 
-    if is_user_banned(user_id):
-        await update.message.reply_text("🚫 You are banned.", parse_mode='Markdown')
-        return
+    dst_full = dst_raw  # use as is
 
-    user_input = update.message.text.strip()
-
-    # ---- RATE LIMIT CHECK (1 hour) ----
+    # ---- RATE LIMIT CHECK ----
     if not (OWNER_ID and user_id == OWNER_ID):
-        user = get_user_data(user_id)
-        last_search = user.get("last_search_time", 0)
+        user_data = get_user_data(user_id)
+        last_prank = user_data.get("last_prank_time", 0)
         now = time.time()
-        limit_seconds = 3600  # 1 hour
-        if now - last_search < limit_seconds:
-            remaining = limit_seconds - (now - last_search)
+        if now - last_prank < PRANK_RATE_LIMIT:
+            remaining = PRANK_RATE_LIMIT - (now - last_prank)
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
-            hours = limit_seconds // 3600
-            time_unit = "hour" if hours == 1 else "hours"
             await update.message.reply_text(
                 f"⏳ **Rate Limit Exceeded!**\n\n"
-                f"You can only search **once every {hours} {time_unit}**.\n"
+                f"You can only send **1 prank call per hour**.\n"
                 f"Please wait **{minutes} minutes and {seconds} seconds** before trying again.",
                 parse_mode='Markdown',
                 reply_markup=get_keyboard()
             )
+            context.user_data.pop("state", None)
+            context.user_data.pop("prank_voice", None)
             return
 
-    if not (OWNER_ID and user_id == OWNER_ID):
-        credits = get_credits(user_id)
-        if credits <= 0:
-            await update.message.reply_text(
-                "❌ **Insufficient Credits!**\n\n"
-                "You have 0 credits. Please use **Refer Friends** to get more.\n"
-                "You'll also receive free credits every 30 days.",
-                parse_mode='Markdown',
-                reply_markup=get_keyboard()
-            )
-            return
-
-    if not re.match(r'^1[0-9]{9}$', user_input):
+    # Check credits
+    if get_credits(user_id) < PRANK_COST:
         await update.message.reply_text(
-            "❌ **Invalid format!**\n\nSend: `1712345678`\nDon't include: +880 or 0",
+            f"❌ **Insufficient Credits!**\n\n"
+            f"You need {PRANK_COST} credits for a prank call.\n"
+            f"Your current credits: {get_credits(user_id)}",
             parse_mode='Markdown',
             reply_markup=get_keyboard()
         )
+        context.user_data.pop("state", None)
+        context.user_data.pop("prank_voice", None)
         return
 
-    await notify_owner(context, update.effective_user, "Number Lookup Request", extra=f"Phone: +880{user_input}")
-
-    if not deduct_credit(user_id):
+    # Deduct credits
+    if not deduct_credit(user_id, PRANK_COST):
         await update.message.reply_text(
-            "❌ **Insufficient Credits!**\n\n"
-            "You have 0 credits. Please use **Refer Friends** to get more.",
+            "❌ **Failed to deduct credits.** Please try again.",
             parse_mode='Markdown',
             reply_markup=get_keyboard()
         )
+        context.user_data.pop("state", None)
+        context.user_data.pop("prank_voice", None)
         return
 
-    # Update last search time (after deduction, so rate limit is applied)
-    user_data = get_user_data(user_id)
-    user_data["last_search_time"] = time.time()
-    update_user_data(user_id, user_data)
+    selected = context.user_data.get("prank_voice")
+    if not selected:
+        await update.message.reply_text("❌ Voice selection lost. Please start over.", reply_markup=get_keyboard())
+        context.user_data.pop("state", None)
+        context.user_data.pop("prank_voice", None)
+        return
 
-    processing_msg = await update.message.reply_text("🔍 **Processing...**", parse_mode='Markdown')
-    try:
-        access_token = generate_access_token()
-        if not access_token:
-            await processing_msg.edit_text("❌ **Error:** Authentication failed.")
-            return
+    await notify_owner(context, update.effective_user, "Prank Call Request",
+                       extra=f"Number: {dst_full}, Voice: {selected['titulo']}")
 
-        unitech_data = unitech_lookup(user_input, access_token)
+    processing_msg = await update.message.reply_text("📞 **Sending prank call...**", parse_mode='Markdown')
 
-        result_text = format_result(user_input, unitech_data)
+    success = send_prank_call(dst_full, selected)
 
-        await processing_msg.delete()
-        # === FIX: removed Markdown parsing to avoid underscore error ===
-        await update.message.reply_text(result_text, parse_mode=None)
+    context.user_data.pop("state", None)
+    context.user_data.pop("prank_voice", None)
 
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        await processing_msg.edit_text("❌ **Error:** Something went wrong.")
+    if success:
+        user_data = get_user_data(user_id)
+        user_data["last_prank_time"] = time.time()
+        update_user_data(user_id, user_data)
+        await processing_msg.edit_text("✅ **Call send successfully!**", parse_mode='Markdown')
+    else:
+        await processing_msg.edit_text("❌ **Something went wrong!**", parse_mode='Markdown')
 
-# ============ ADMIN COMMAND ============
+# ============ ADMIN COMMAND & INPUT ============
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
@@ -867,7 +912,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# ============ ADMIN INPUT HANDLER ============
 async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
@@ -997,7 +1041,6 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await update.message.reply_text("Unknown action. Use /admin again.")
 
-# ============ ADMIN BUTTON HANDLER ============
 async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
@@ -1064,14 +1107,35 @@ async def handle_admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         pass
 
+# ============ handle_message ============
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_ID and context.user_data.get("admin_action"):
+        await handle_admin_input(update, context)
+        return
+
+    state = context.user_data.get("state")
+    if state == "awaiting_voice":
+        await handle_prank_voice(update, context)
+        return
+    elif state == "awaiting_prank_number":
+        await handle_prank_number(update, context)
+        return
+
+    await update.message.reply_text(
+        "Please use the buttons below to interact.",
+        reply_markup=get_keyboard()
+    )
+
 # ============ MAIN ============
 def main():
-    print("🤖 Bot starting...")
+    print("🤖 Prank Call Bot starting...")
     print(f"📌 Bot Token: {'✅ Set' if BOT_TOKEN else '❌ Not Set'}")
     if OWNER_ID:
         print(f"👤 Owner ID: {OWNER_ID} (exempt from credit deduction & rate limit)")
     else:
-        print("ℹ️ No owner set – all users consume credits.")
+        print("ℹ️ No owner set – all users consume credits and rate limits.")
 
     if not BOT_TOKEN:
         print("❌ Please set BOT_TOKEN environment variable!")
@@ -1080,7 +1144,6 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("admin", admin_command))
 
     application.add_handler(CallbackQueryHandler(verify_joined_callback, pattern="^verify_joined$"))
@@ -1090,7 +1153,7 @@ def main():
         handle_admin_buttons
     ))
 
-    application.add_handler(MessageHandler(filters.Regex('^🔍 Search Number$'), search_button_handler))
+    application.add_handler(MessageHandler(filters.Regex('^📞 Send Prank Call$'), prank_call_button))
     application.add_handler(MessageHandler(filters.Regex('^👥 Refer Friends$'), refer_friends))
     application.add_handler(MessageHandler(filters.Regex('^📊 My Credits$'), my_credits))
     application.add_handler(MessageHandler(filters.Regex('^📞 Contact Admin$'), contact_admin))
